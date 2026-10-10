@@ -67,7 +67,8 @@ Rules for these pages:
   variable declared, every SVG marker referenced exists, tags balanced, zero external
   resources. A page with silently unstyled sections is a broken deliverable.
 
-Current pages: `docs/architecture.html` (framework), `docs/gesture-layer.html` (gestures).
+Current pages: `docs/architecture.html` (framework), `docs/gesture-layer.html` (gestures),
+`docs/edit-lock.html` (edit lock and scale-derived snapping).
 
 After implementation, update the same page so it describes what was actually built.
 

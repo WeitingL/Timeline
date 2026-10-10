@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>編輯鎖定與依刻度吸附</title>
+<style>
+  :root{
+    color-scheme:light;
+    --ground:#F5F7FA; --surface:#FFFFFF; --surface-2:#EDF0F6; --surface-3:#E1E6F0;
+    --ink:#131722; --ink-2:#4C566A; --ink-3:#7A8498;
+    --rule:#DBE1EB; --rule-strong:#BDC5D5;
+    --accent:#3F6FE4; --accent-soft:#E7EDFC; --accent-ink:#2B55BC;
+    --ok:#0E9F8A; --ok-soft:#E0F4F0;
+    --warn:#C9741C; --warn-soft:#FBEEDC;
+    --bad:#D2495F; --bad-soft:#FBE7EA;
+    --idle-soft:#E9ECF3;
+    --bar-1:#3F6FE4; --bar-2:#0E9F8A; --bar-3:#E08A2E;
+    --bar-4:#8E5BD4; --bar-5:#D2495F; --bar-6:#2A9FB8;
+    --shadow:0 1px 2px rgba(19,23,34,.05), 0 10px 28px -20px rgba(19,23,34,.3);
+    --sans:system-ui,-apple-system,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    --serif:Georgia,"Songti TC","Times New Roman",serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      color-scheme:dark;
+      --ground:#0E1117; --surface:#161A22; --surface-2:#1D222C; --surface-3:#262C38;
+      --ink:#E7EAF1; --ink-2:#A4ADBE; --ink-3:#798395;
+      --rule:#262C38; --rule-strong:#3A4250;
+      --accent:#7D9CF2; --accent-soft:#1A2440; --accent-ink:#A6BCF8;
+      --ok:#34C3A8; --ok-soft:#102E2B;
+      --warn:#E3A054; --warn-soft:#33250F;
+      --bad:#E9697D; --bad-soft:#331A1F;
+      --idle-soft:#1F242F;
+      --bar-1:#5C85EC; --bar-2:#21B49C; --bar-3:#E89C48;
+      --bar-4:#A074E0; --bar-5:#DD6477; --bar-6:#3FB3CB;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -22px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --ground:#0E1117; --surface:#161A22; --surface-2:#1D222C; --surface-3:#262C38;
+    --ink:#E7EAF1; --ink-2:#A4ADBE; --ink-3:#798395;
+    --rule:#262C38; --rule-strong:#3A4250;
+    --accent:#7D9CF2; --accent-soft:#1A2440; --accent-ink:#A6BCF8;
+    --ok:#34C3A8; --ok-soft:#102E2B;
+    --warn:#E3A054; --warn-soft:#33250F;
+    --bad:#E9697D; --bad-soft:#331A1F;
+    --idle-soft:#1F242F;
+    --bar-1:#5C85EC; --bar-2:#21B49C; --bar-3:#E89C48;
+    --bar-4:#A074E0; --bar-5:#DD6477; --bar-6:#3FB3CB;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -22px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  img{max-width:100%}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:980px; margin:0 auto; padding-inline:20px; padding-block:36px 72px}
+
+  /* ---------- masthead ---------- */
+  .top{display:flex; align-items:flex-start; gap:16px}
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-3); display:flex; align-items:center; gap:10px;
+  }
+  .tickrule{
+    flex:1; min-width:30px; height:8px; border-bottom:1px solid var(--rule-strong);
+    background-image:repeating-linear-gradient(to right,var(--rule-strong) 0 1px,transparent 1px 12px);
+    background-position:bottom; background-repeat:repeat-x; background-size:12px 4px;
+  }
+  h1{font-family:var(--serif); font-weight:600; font-size:clamp(27px,5.6vw,40px); line-height:1.12; margin:12px 0 0; text-wrap:balance}
+  .standfirst{color:var(--ink-2); margin:12px 0 0; max-width:60ch; font-size:16px}
+  #tt{
+    flex:0 0 auto; margin-top:2px; background:var(--surface); color:var(--ink-2);
+    border:1px solid var(--rule-strong); border-radius:7px; padding:6px 11px;
+    font-family:var(--mono); font-size:11px; cursor:pointer;
+  }
+  #tt:hover{border-color:var(--accent); color:var(--accent-ink)}
+  #tt:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* ---------- sections ---------- */
+  section{margin-top:52px}
+  h2{font-family:var(--serif); font-weight:600; font-size:23px; margin:0 0 4px; display:flex; align-items:baseline; gap:11px}
+  h2 .num{font-family:var(--mono); font-size:12.5px; color:var(--accent)}
+  .lede{color:var(--ink-2); margin:0 0 4px; max-width:66ch; font-size:14.5px}
+  figure{margin:18px 0 0}
+  figcaption{font-size:12.5px; color:var(--ink-3); margin-top:9px; max-width:74ch}
+  figcaption code{font-size:11.5px}
+  code{font-family:var(--mono); font-size:.875em; background:var(--surface-2); border:1px solid var(--rule); border-radius:4px; padding:1px 5px}
+
+  .frame{background:var(--surface); border:1px solid var(--rule); border-radius:10px; padding:14px; box-shadow:var(--shadow)}
+  .scroller{overflow-x:auto}
+  .scroller svg{display:block; width:100%; min-width:620px; height:auto}
+  .duo{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px}
+  .duo .frame .scroller svg{min-width:0}
+
+  /* ---------- svg diagram tokens ---------- */
+  svg text{font-family:var(--sans)}
+  .t{fill:var(--ink); font-size:12px}
+  .tb{fill:var(--ink); font-size:12.5px; font-weight:600}
+  .t2{fill:var(--ink-2); font-size:11.5px}
+  .tm{fill:var(--ink); font-family:var(--mono); font-size:11px}
+  .tm2{fill:var(--ink-2); font-family:var(--mono); font-size:10.5px}
+  .lbl{fill:var(--ink-3); font-family:var(--mono); font-size:10px; letter-spacing:.07em}
+  .tw{fill:#fff; font-size:10.5px; font-weight:500}
+  .tok{fill:var(--ok); font-size:11.5px; font-weight:600}
+  .tbad{fill:var(--bad); font-size:11.5px; font-weight:600}
+  .tacc{fill:var(--accent-ink); font-family:var(--mono); font-size:10.5px}
+
+  .box{fill:var(--surface); stroke:var(--rule-strong); stroke-width:1}
+  .box2{fill:var(--surface-2); stroke:var(--rule); stroke-width:1}
+  .box3{fill:var(--surface-3); stroke:var(--rule); stroke-width:1}
+  .boxa{fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2}
+  .boxbad{fill:var(--bad-soft); stroke:var(--bad); stroke-width:1.2}
+  .boxdash{fill:none; stroke:var(--rule-strong); stroke-width:1.2; stroke-dasharray:5 4}
+  .boxadash{fill:var(--accent-soft); fill-opacity:.45; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:5 4}
+  .axis{stroke:var(--ink-2); stroke-width:1.5; fill:none}
+  .tick{stroke:var(--rule-strong); stroke-width:1}
+  .gridl{stroke:var(--rule-strong); stroke-width:1; stroke-dasharray:3 4}
+  .guide{stroke:var(--accent); stroke-width:1; stroke-dasharray:3 4; opacity:.6}
+  .dim{stroke:var(--accent); stroke-width:1.2; fill:none}
+  .flow{stroke:var(--ink-2); stroke-width:1.4; fill:none}
+  .flowdash{stroke:var(--ink-3); stroke-width:1.2; fill:none; stroke-dasharray:5 4}
+  .flowbad{stroke:var(--bad); stroke-width:1.4; fill:none}
+  .bc1{fill:var(--bar-1)} .bc2{fill:var(--bar-2)} .bc3{fill:var(--bar-3)}
+  .bc4{fill:var(--bar-4)} .bc5{fill:var(--bar-5)} .bc6{fill:var(--bar-6)}
+  #arr path{fill:var(--ink-2)} #arrA path{fill:var(--accent)} #arrB path{fill:var(--bad)}
+
+  /* ---------- screen mock ---------- */
+  .mock{border:1px solid var(--rule-strong); border-radius:10px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow); font-size:11px}
+  .mc{padding:9px 11px; border-bottom:1px solid var(--rule); display:flex; flex-direction:column; gap:7px}
+  .mr{display:flex; align-items:center; gap:5px; flex-wrap:wrap}
+  .chip{border:1px solid var(--rule-strong); border-radius:99px; padding:2.5px 11px; color:var(--ink-2); white-space:nowrap}
+  .chip.on{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); font-weight:600}
+  .sp{flex:1 1 auto; min-width:4px}
+  .nav{color:var(--accent-ink); padding:2px 8px; font-weight:600}
+  .md{font-family:var(--mono); font-weight:600; font-size:12px}
+  .zw{display:flex; align-items:center; gap:6px; color:var(--ink-3)}
+  .zoom{width:66px; height:3px; background:var(--surface-3); border-radius:99px; position:relative}
+  .zoom::before{content:""; position:absolute; inset:0 66% 0 0; background:var(--accent); border-radius:99px}
+  .zoom::after{content:""; position:absolute; left:34%; top:-3.5px; width:10px; height:10px; border-radius:50%; background:var(--accent)}
+  .mg{display:grid; grid-template-columns:100px 1fr}
+  .mcorner{border-right:1px solid var(--rule-strong); border-bottom:1px solid var(--rule)}
+  .maxis{border-bottom:1px solid var(--rule); display:flex; position:relative; height:32px}
+  .tk{flex:1 1 0; min-width:0; border-left:1px solid var(--rule); font-family:var(--mono); font-size:9.5px; color:var(--ink-3); padding:3px 0 0 4px; overflow:hidden; white-space:nowrap}
+  .tk.maj{border-left:1.5px solid var(--rule-strong); color:var(--ink-2); font-weight:600}
+  .mlabels{border-right:1px solid var(--rule-strong)}
+  .lab{height:40px; padding:0 9px; display:flex; flex-direction:column; justify-content:center; overflow:hidden}
+  .lab b{font-size:11px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .lab span{font-family:var(--mono); font-size:9px; color:var(--ink-3)}
+  .mlanes{position:relative}
+  .lane{height:40px; position:relative}
+  .lane::before{content:""; position:absolute; inset:0; background-image:repeating-linear-gradient(to right,var(--rule) 0 1px,transparent 1px 11.111%); opacity:.8}
+  .bar{position:absolute; top:8px; height:24px; border-radius:5px; display:flex; align-items:center; padding:0 6px; color:#fff; font-size:10px; font-weight:600; white-space:nowrap; overflow:hidden; min-width:10px}
+  .now{position:absolute; top:0; bottom:0; width:1.5px; background:var(--bad); opacity:.8}
+  .now.ax::after{content:""; position:absolute; bottom:-3px; left:-2.25px; width:6px; height:6px; border-radius:50%; background:var(--bad)}
+
+  /* ---------- scoreboard ---------- */
+  .score{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:9px; margin-top:18px}
+  .sc{background:var(--surface); border:1px solid var(--rule); border-left-width:3px; border-radius:7px; padding:10px 12px}
+  .sc.d{border-left-color:var(--ok)} .sc.p{border-left-color:var(--warn)} .sc.t{border-left-color:var(--rule-strong)}
+  .sc b{display:block; font-size:13px; font-weight:600}
+  .sc span{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase}
+  .sc.d span{color:var(--ok)} .sc.p span{color:var(--warn)} .sc.t span{color:var(--ink-3)}
+  .sc em{display:block; font-family:var(--mono); font-style:normal; font-size:10.5px; color:var(--ink-3); margin-top:3px}
+
+  .note{margin-top:22px; background:var(--warn-soft); border:1px solid var(--warn); border-radius:9px; padding:13px 15px; font-size:13.5px}
+  .note b{color:var(--warn)}
+  footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-3)}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style><style>
+  /* additions for the gesture diagrams */
+  .pin{fill:var(--ink-2)}
+  .divider{stroke:#fff; stroke-width:1; opacity:.55}
+  .grip{fill:#fff; opacity:.6}
+  .leader{stroke:var(--rule-strong); stroke-width:1}
+  .crossout{stroke:var(--bad); stroke-width:1.6; fill:none}
+  .seriesok{stroke:var(--accent); stroke-width:2; fill:none}
+  .seriesbad{stroke:var(--bad); stroke-width:2; fill:none}
+  .seriesraw{stroke:var(--ink-3); stroke-width:1.4; fill:none; stroke-dasharray:4 3}
+  .seriesraw2{stroke:var(--ink-2); stroke-width:1.6; fill:none; stroke-dasharray:5 4}
+  .dotok circle,.dotok2{fill:var(--accent)}
+  .dotbad circle{fill:var(--bad)}
+  .dotraw{fill:var(--ink-2)}
+  .phase{display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--ink-3); margin-bottom:5px}
+  /* table (intent map) */
+  .tablewrap{overflow-x:auto; margin-top:20px; border:1px solid var(--rule);
+    border-radius:9px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:470px}
+  th,td{text-align:left; padding:9px 14px; border-bottom:1px solid var(--rule); vertical-align:top}
+  thead th{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-3); font-weight:500; background:var(--surface-2); white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  td b{font-weight:600; color:var(--ink)}
+  /* grouped list (preview inventory) */
+  .files{margin-top:20px; border:1px solid var(--rule); border-radius:9px;
+    overflow:hidden; background:var(--surface)}
+  .fgroup{font-family:var(--mono); font-size:11px; color:var(--ink-3);
+    background:var(--surface-2); padding:7px 14px; border-bottom:1px solid var(--rule)}
+  .frow{display:grid; grid-template-columns:minmax(0,78px) 1fr; gap:4px 18px;
+    padding:10px 14px; border-bottom:1px solid var(--rule)}
+  .frow:last-child{border-bottom:0}
+  .frow .f{font-family:var(--mono); font-size:12.5px; font-weight:600}
+  .frow .r{font-size:13px; color:var(--ink-2)}
+  @media (max-width:560px){ .frow{grid-template-columns:1fr} }
+  .buffer{fill:var(--accent); fill-opacity:.1; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3}
+  .wash{fill:#fff; opacity:.24}
+  .washsoft{fill:#fff; opacity:.13}
+  .griplit{fill:#fff; opacity:.95}
+  .card h3{font-size:14.5px; margin-top:2px}
+  .cards.three{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+</style><style>
+  /* diagram additions */
+  .boxwarn{fill:var(--warn-soft); stroke:var(--warn); stroke-width:1.1}
+  .twarn{fill:var(--warn); font-size:11.5px; font-weight:600}
+  .nowline2{stroke:var(--bad); stroke-width:2}
+  #arrW path{fill:var(--warn)}
+  td .sc{display:inline-block; margin:0; border-radius:5px; background:var(--surface)}
+  td .sc span{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase}
+  .frow .f, td.fn{font-family:var(--mono); font-size:11.5px; line-height:1.5; white-space:nowrap}
+  .cards.three{grid-template-columns:repeat(auto-fit,minmax(245px,1fr))}
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arr"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+  <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+  <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+</defs></svg>
+
+<div class="page">
+
+<header>
+  <div class="top">
+    <div style="flex:1; min-width:0">
+      <div class="eyebrow"><span>Spec 003</span><span class="tickrule"></span><span>基準 v0.2.0</span></div>
+      <h1>編輯鎖定<br>依刻度吸附 · 置中於現在</h1>
+      <p class="standfirst">修正水平平移與編輯互相干擾的方式。四項改動：吸附跟著刻度走、一次觸碰就是一段完整的編輯、編輯時拖到邊緣會讓出空間、紅線落在畫面正中。六項設計決定已確認。</p>
+      <p style="margin:14px 0 0"><a href="architecture.html">框架總覽</a> · <a href="gesture-layer.html">手勢層</a></p>
+    </div>
+    <button id="tt" type="button">主題</button>
+  </div>
+</header>
+
+<section>
+  <h2><span class="num">01</span>吸附跟著刻度走</h2>
+  <p class="lede">現在的 <code>snapInterval</code> 跟 <code>scale</code> 沒有任何關係。所以在年刻度上，一次拖曳仍然吸附到 15 分鐘 — 比畫面上任何看得見的東西細約三千倍。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 300" role="img" aria-label="四種刻度的視覺粒度與對應的吸附間隔">
+    <text x="20" y="24" class="lbl">刻度</text>
+    <text x="130" y="24" class="lbl">一格刻度代表</text>
+    <text x="330" y="24" class="lbl">畫面上的網格</text>
+    <text x="660" y="24" class="lbl">吸附間隔</text>
+
+    <text x="20" y="62" class="tb">日</text>
+    <text x="130" y="62" class="tm2">1 小時</text>
+    <g class="gridl"><line x1="330" y1="42" x2="330" y2="76"/><line x1="402" y1="42" x2="402" y2="76"/>
+      <line x1="474" y1="42" x2="474" y2="76"/><line x1="546" y1="42" x2="546" y2="76"/><line x1="618" y1="42" x2="618" y2="76"/></g>
+    <g class="dim"><line x1="348" y1="60" x2="348" y2="76"/><line x1="366" y1="60" x2="366" y2="76"/><line x1="384" y1="60" x2="384" y2="76"/></g>
+    <rect x="658" y="46" width="84" height="26" rx="5" class="boxa"/>
+    <text x="700" y="64" class="tm" text-anchor="middle">15 分</text>
+    <text x="754" y="64" class="t2">一格切四份</text>
+
+    <line x1="20" y1="90" x2="880" y2="90" class="tick"/>
+
+    <text x="20" y="128" class="tb">週</text>
+    <text x="130" y="128" class="tm2">1 天</text>
+    <g class="gridl"><line x1="330" y1="108" x2="330" y2="142"/><line x1="402" y1="108" x2="402" y2="142"/>
+      <line x1="474" y1="108" x2="474" y2="142"/><line x1="546" y1="108" x2="546" y2="142"/><line x1="618" y1="108" x2="618" y2="142"/></g>
+    <rect x="658" y="112" width="84" height="26" rx="5" class="boxa"/>
+    <text x="700" y="130" class="tm" text-anchor="middle">1 天</text>
+    <text x="754" y="130" class="t2">等於一格</text>
+
+    <line x1="20" y1="156" x2="880" y2="156" class="tick"/>
+
+    <text x="20" y="194" class="tb">月</text>
+    <text x="130" y="194" class="tm2">1 天</text>
+    <g class="gridl"><line x1="330" y1="174" x2="330" y2="208"/><line x1="366" y1="174" x2="366" y2="208"/>
+      <line x1="402" y1="174" x2="402" y2="208"/><line x1="438" y1="174" x2="438" y2="208"/><line x1="474" y1="174" x2="474" y2="208"/>
+      <line x1="510" y1="174" x2="510" y2="208"/><line x1="546" y1="174" x2="546" y2="208"/><line x1="582" y1="174" x2="582" y2="208"/>
+      <line x1="618" y1="174" x2="618" y2="208"/></g>
+    <rect x="658" y="178" width="84" height="26" rx="5" class="boxa"/>
+    <text x="700" y="196" class="tm" text-anchor="middle">1 天</text>
+    <text x="754" y="196" class="t2">等於一格</text>
+
+    <line x1="20" y1="222" x2="880" y2="222" class="tick"/>
+
+    <text x="20" y="260" class="tb">年</text>
+    <text x="130" y="260" class="tm2">1 個月</text>
+    <g class="gridl"><line x1="330" y1="240" x2="330" y2="274"/><line x1="402" y1="240" x2="402" y2="274"/>
+      <line x1="474" y1="240" x2="474" y2="274"/><line x1="546" y1="240" x2="546" y2="274"/><line x1="618" y1="240" x2="618" y2="274"/></g>
+    <g class="dim"><line x1="348" y1="258" x2="348" y2="274"/><line x1="366" y1="258" x2="366" y2="274"/><line x1="384" y1="258" x2="384" y2="274"/></g>
+    <rect x="658" y="244" width="84" height="26" rx="5" class="boxa"/>
+    <text x="700" y="262" class="tm" text-anchor="middle">1 週</text>
+    <text x="754" y="262" class="t2">一格切四份</text>
+  </svg>
+  </div></figure>
+  <figcaption>藍色短線是吸附點、灰色長線是刻度線。你指定的對應關係（<code>model/TimelineConfig.kt:18</code> 目前是固定的 15 分）把吸附綁回它的意義來源：使用者編輯的粒度，跟他看得到的粒度一致。切換刻度就換網格，沒有第二個設定要同步。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">02</span>年→週 會撞到 origin 錨定</h2>
+  <p class="lede">吸附錨定在 <code>origin</code>（<code>SchedulerState.kt:247</code>，目前是今天 00:00）。這對 15 分與 1 天沒問題，對「1 週」有問題。</p>
+  <div class="duo">
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 200" role="img" aria-label="origin 在今天午夜時週網格落在錯誤的星期">
+        <text x="14" y="20" class="tm">origin = 今天 00:00（週三）</text>
+        <line x1="20" y1="72" x2="412" y2="72" class="axis"/>
+        <g class="tick">
+          <line x1="40" y1="66" x2="40" y2="78"/><line x1="92" y1="66" x2="92" y2="78"/>
+          <line x1="144" y1="66" x2="144" y2="78"/><line x1="196" y1="66" x2="196" y2="78"/>
+          <line x1="248" y1="66" x2="248" y2="78"/><line x1="300" y1="66" x2="300" y2="78"/>
+          <line x1="352" y1="66" x2="352" y2="78"/><line x1="404" y1="66" x2="404" y2="78"/>
+        </g>
+        <text x="40" y="60" class="lbl" text-anchor="middle">一</text>
+        <text x="92" y="60" class="lbl" text-anchor="middle">二</text>
+        <text x="144" y="60" class="lbl" text-anchor="middle">三</text>
+        <text x="196" y="60" class="lbl" text-anchor="middle">四</text>
+        <text x="248" y="60" class="lbl" text-anchor="middle">五</text>
+        <text x="300" y="60" class="lbl" text-anchor="middle">六</text>
+        <text x="352" y="60" class="lbl" text-anchor="middle">日</text>
+        <text x="404" y="60" class="lbl" text-anchor="middle">一</text>
+        <line x1="144" y1="96" x2="144" y2="130" class="nowline2"/>
+        <text x="144" y="146" class="tbad" text-anchor="middle">origin</text>
+        <line x1="144" y1="112" x2="412" y2="112" class="flowbad" marker-end="url(#arrB)"/>
+        <text x="280" y="106" class="tbad" text-anchor="middle">+7 天</text>
+        <text x="14" y="176" class="tbad">✗ 週網格落在週三，不是週一</text>
+        <text x="14" y="194" class="t2">而且日網格與週網格互不對齊。</text>
+      </svg>
+    </div></figure>
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 200" role="img" aria-label="origin 移到本週一後所有粒度自動對齊">
+        <text x="14" y="20" class="tm">origin = 本週一 00:00</text>
+        <line x1="20" y1="72" x2="412" y2="72" class="axis"/>
+        <g class="tick">
+          <line x1="40" y1="66" x2="40" y2="78"/><line x1="92" y1="66" x2="92" y2="78"/>
+          <line x1="144" y1="66" x2="144" y2="78"/><line x1="196" y1="66" x2="196" y2="78"/>
+          <line x1="248" y1="66" x2="248" y2="78"/><line x1="300" y1="66" x2="300" y2="78"/>
+          <line x1="352" y1="66" x2="352" y2="78"/><line x1="404" y1="66" x2="404" y2="78"/>
+        </g>
+        <text x="40" y="60" class="lbl" text-anchor="middle">一</text>
+        <text x="92" y="60" class="lbl" text-anchor="middle">二</text>
+        <text x="144" y="60" class="lbl" text-anchor="middle">三</text>
+        <text x="196" y="60" class="lbl" text-anchor="middle">四</text>
+        <text x="248" y="60" class="lbl" text-anchor="middle">五</text>
+        <text x="300" y="60" class="lbl" text-anchor="middle">六</text>
+        <text x="352" y="60" class="lbl" text-anchor="middle">日</text>
+        <text x="404" y="60" class="lbl" text-anchor="middle">一</text>
+        <line x1="40" y1="96" x2="40" y2="130" class="dim"/>
+        <text x="40" y="146" class="tacc" text-anchor="middle">origin</text>
+        <line x1="404" y1="96" x2="404" y2="130" class="dim"/>
+        <line x1="40" y1="112" x2="404" y2="112" class="dim" marker-end="url(#arrA)"/>
+        <text x="222" y="106" class="tacc" text-anchor="middle">+7 天 = 下週一</text>
+        <text x="14" y="176" class="tok">✓ 15 分 · 1 天 · 7 天 都整除這個網格</text>
+        <text x="14" y="194" class="t2">架構承諾「吸附錨定 origin」不必打破。</text>
+      </svg>
+    </div></figure>
+  </div>
+  <figcaption>只改 <code>origin</code> 的<strong>定義</strong>，不改錨定方式 — 從「今天午夜」變成「本週一午夜」。15 分鐘、1 天、7 天三種粒度都能整除這個網格，所以它們彼此對齊、也跟刻度線對齊。<code>origin</code> 的 KDoc 現在寫著「today sits at exactly 0」，要一起更正。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">03</span>目前的鎖定只蓋住觸碰的一部分</h2>
+  <p class="lede">你要的是「按下到放開全程都是編輯狀態」。目前的鎖定從<strong>超過 touch slop</strong> 才開始。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 290" role="img" aria-label="目前與提案的鎖定覆蓋範圍">
+    <text x="20" y="26" class="tbad">✗ 現在 — 兩個各自獨立的 pointerInput</text>
+    <line x1="150" y1="78" x2="840" y2="78" class="axis" marker-end="url(#arr)"/>
+    <text x="150" y="100" class="lbl">按下</text>
+    <text x="370" y="100" class="lbl">超過 SLOP</text>
+    <text x="810" y="100" class="lbl" text-anchor="end">放開</text>
+    <g class="tick"><line x1="160" y1="72" x2="160" y2="84"/><line x1="380" y1="72" x2="380" y2="84"/><line x1="820" y1="72" x2="820" y2="84"/></g>
+
+    <rect x="160" y="42" width="660" height="22" rx="4" class="box2"/>
+    <text x="170" y="57" class="tm2">:191 觀察用 — 不消耗任何事件</text>
+
+    <rect x="160" y="112" width="220" height="24" rx="4" class="boxbad"/>
+    <text x="270" y="128" class="tm2" text-anchor="middle">無人聲明</text>
+    <rect x="380" y="112" width="440" height="24" rx="4" class="boxa"/>
+    <text x="600" y="128" class="tm2" text-anchor="middle">:211 change.consume() — 鎖定生效</text>
+    <text x="20" y="128" class="tm2">平移鎖定</text>
+
+    <text x="160" y="158" class="tbad">這段期間 scrollable 仍可能搶走手勢</text>
+    <text x="500" y="158" class="t2">而 waitForUpOrCancellation() 在交棒時返回 →</text>
+    <text x="500" y="174" class="t2">pressedZone 歸零，:152 用 draft?.mode ?: pressedZone 補</text>
+
+    <line x1="20" y1="192" x2="880" y2="192" class="tick"/>
+
+    <text x="20" y="220" class="tok">✓ 提案 — 單一 awaitEachGesture 擁有整段觸碰</text>
+    <line x1="150" y1="262" x2="840" y2="262" class="axis" marker-end="url(#arr)"/>
+    <g class="tick"><line x1="160" y1="256" x2="160" y2="268"/><line x1="820" y1="256" x2="820" y2="268"/></g>
+    <text x="150" y="284" class="lbl">按下 → down.consume()</text>
+    <text x="810" y="284" class="lbl" text-anchor="end">放開 → endEdit()</text>
+    <rect x="160" y="230" width="660" height="24" rx="4" class="boxa"/>
+    <text x="490" y="246" class="tm2" text-anchor="middle">編輯狀態 — 平移 / 兩指換區間 / 垂直捲動 全部停用</text>
+  </svg>
+  </div></figure>
+  <figcaption>關鍵是<strong>在 down 事件就消耗</strong>。祖先的 <code>scrollable</code> 與 <code>verticalScroll</code> 都會檢查消耗狀態，所以消耗 down 本身就完成了鎖定。<code>editingTaskId</code> 狀態仍然需要，因為兩指滑動跑在 <code>Initial</code> pass、比這個 block 的 Main pass 更早看到事件（<code>SchedulerScreen.kt:87</code> 目前的條件是 <code>draft == null</code>，而 draft 同樣要等 slop 才存在）。合併之後 <code>:152</code> 那個補丁也一起消失。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">04</span>緩衝邊界決定誰接手</h2>
+  <p class="lede">加了緩衝之後，它同時解決另一件事：第一次超過緩衝的位移偏哪個軸，就由誰擁有這段手勢。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 290" role="img" aria-label="緩衝邊界的軸向判定">
+    <rect x="330" y="96" width="240" height="96" rx="6" class="boxadash"/>
+    <circle cx="450" cy="144" r="7" class="dotok2"/>
+    <text x="450" y="86" class="lbl" text-anchor="middle">按下 — 進入編輯狀態，命中區亮起</text>
+    <circle cx="450" cy="144" r="46" class="buffer"/>
+    <text x="450" y="212" class="tacc" text-anchor="middle">緩衝 = 平台 touchSlop</text>
+
+    <path d="M503,144 L690,144" class="dim" marker-end="url(#arrA)"/>
+    <rect x="696" y="100" width="190" height="42" rx="6" class="boxa"/>
+    <text x="791" y="118" class="tb" text-anchor="middle">水平 → bar 接手</text>
+    <text x="791" y="134" class="lbl" text-anchor="middle">CONSUME · 平移鎖死</text>
+
+    <path d="M450,197 L450,258" class="flow" marker-end="url(#arr)"/>
+    <rect x="330" y="258" width="240" height="30" rx="6" class="box2"/>
+    <text x="450" y="278" class="tm2" text-anchor="middle">垂直 → 讓給列表捲動器</text>
+
+    <path d="M397,144 L210,144" class="flow" marker-end="url(#arr)"/>
+    <rect x="20" y="100" width="184" height="42" rx="6" class="boxa"/>
+    <text x="112" y="118" class="tb" text-anchor="middle">水平 → bar 接手</text>
+    <text x="112" y="134" class="lbl" text-anchor="middle">反方向同理</text>
+
+    <text x="20" y="34" class="tok">✓ 「只有水平位移對 bar 有意義」字面成立</text>
+    <text x="20" y="54" class="t2">垂直不是被封鎖，是被忽略 — 從不 consume，事件自然穿透。</text>
+    <text x="20" y="240" class="t2">軸向一旦判定就鎖住，斜向拖曳不會在編輯與捲動之間來回跳。</text>
+    <text x="20" y="260" class="t2">按下後位移未超過緩衝就放開 = 單純點一下，不改動任何資料。</text>
+  </svg>
+  </div></figure>
+  <figcaption>這取代了本 spec 初稿「在 down 事件就 consume」的寫法。按下就 consume 會連帶封掉垂直的列表捲動（祖先的 <code>verticalScroll</code> 同樣檢查消耗狀態）— 六筆任務時看不出來，但任務一多，手指剛好落在 bar 上就捲不動列表。<br><br>平移依然無法從 bar 上的觸碰勝出：bar 與祖先的 <code>scrollable</code> 等的是同一個 slop，而指標事件在 main pass 先到子層，所以任何水平手勢都是 bar 先 consume。緩衝距離採平台的 <code>viewConfiguration.touchSlop</code> 而非自訂常數，讓 bar 的手感跟裝置上其他可拖曳元件一致；跨越緩衝所花的位移會交給第一次 <code>dragBy</code>，所以 bar 不會比手指落後一個 slop。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">05</span>編輯時拖到邊緣會讓出空間</h2>
+  <p class="lede">平移一鎖，這項就從「好用」變成「必要」 — 否則使用者沒有任何方式把 bar 拖出目前視窗。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 250" role="img" aria-label="邊緣自動捲動時 bar 與視窗同步移動">
+    <rect x="150" y="40" width="600" height="96" rx="6" class="boxadash"/>
+    <text x="450" y="32" class="lbl" text-anchor="middle">視窗</text>
+    <rect x="662" y="40" width="88" height="96" class="wash"/>
+    <text x="706" y="152" class="tacc" text-anchor="middle">邊緣門檻</text>
+
+    <rect x="560" y="68" width="150" height="28" rx="5" class="bc2"/>
+    <text x="570" y="87" class="tw">設計稿</text>
+    <circle cx="700" cy="82" r="7" class="dotok2"/>
+    <text x="700" y="116" class="tm2" text-anchor="middle">手指停住</text>
+
+    <line x1="150" y1="180" x2="840" y2="180" class="axis" marker-end="url(#arr)"/>
+    <text x="150" y="202" class="lbl">時間軸</text>
+    <line x1="560" y1="170" x2="700" y2="170" class="dim" marker-end="url(#arrA)"/>
+    <text x="630" y="164" class="tacc" text-anchor="middle">視窗往前捲 n 分鐘</text>
+    <line x1="560" y1="214" x2="700" y2="214" class="dim" marker-end="url(#arrA)"/>
+    <text x="630" y="232" class="tacc" text-anchor="middle">draft 也必須前進 n 分鐘</text>
+
+    <text x="30" y="84" class="tb">結果</text>
+    <text x="20" y="104" class="t2">bar 的螢幕位置不動，</text>
+    <text x="20" y="120" class="t2">它的時間在變。</text>
+  </svg>
+  </div></figure>
+  <figcaption>這裡最容易寫錯的是<strong>正負號關係</strong>：視窗往前捲 <em>n</em> 分鐘，draft 必須同時前進 <em>n</em> 分鐘，否則 bar 會從手指底下緩慢爬走。夾限（<code>origin ± 2 年</code>）必須讓兩者同時停住，只停捲動會造成同樣的脫離。速度採用依深入門檻程度遞增的斜坡 — 固定速率不是在門檻邊緣太慢，就是深入時失控。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">06</span>紅線落在畫面正中</h2>
+  <p class="lede">目前 <code>TimeScale.todayStart()</code>（<code>model/TimeScale.kt:64</code>）把「現在」放在靠左的位置，因為它不需要知道視窗寬度。置中需要寬度。</p>
+  <div class="duo">
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 170" role="img" aria-label="目前現在落在靠左">
+        <text x="14" y="20" class="tm">現在：todayStart() 固定前置量</text>
+        <rect x="20" y="44" width="392" height="68" rx="5" class="boxadash"/>
+        <line x1="76" y1="44" x2="76" y2="112" class="nowline2"/>
+        <text x="76" y="130" class="tbad" text-anchor="middle">現在</text>
+        <line x1="20" y1="126" x2="76" y2="126" class="dim" marker-start="url(#arrA)" marker-end="url(#arrA)"/>
+        <text x="48" y="146" class="tacc" text-anchor="middle">1 小時</text>
+        <text x="250" y="84" class="t2" text-anchor="middle">右側全是未來</text>
+        <text x="14" y="164" class="t2">不需要寬度，但無法置中。</text>
+      </svg>
+    </div></figure>
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 170" role="img" aria-label="提案現在落在正中">
+        <text x="14" y="20" class="tm">提案：置中於時間軸區域</text>
+        <rect x="20" y="44" width="392" height="68" rx="5" class="boxadash"/>
+        <line x1="216" y1="44" x2="216" y2="112" class="nowline2"/>
+        <text x="216" y="130" class="tbad" text-anchor="middle">現在</text>
+        <line x1="20" y1="126" x2="216" y2="126" class="dim" marker-start="url(#arrA)" marker-end="url(#arrA)"/>
+        <text x="118" y="146" class="tacc" text-anchor="middle">半個視窗</text>
+        <line x1="216" y1="126" x2="412" y2="126" class="dim" marker-start="url(#arrA)" marker-end="url(#arrA)"/>
+        <text x="314" y="146" class="tacc" text-anchor="middle">半個視窗</text>
+        <text x="14" y="164" class="t2">過去與未來各半，啟動與「今天」都如此。</text>
+      </svg>
+    </div></figure>
+  </div>
+  <figcaption>這需要 <code>SchedulerState</code> 知道視窗寬度（新增 <code>viewportWidthPx</code>，由 <code>Modifier.onSizeChanged</code> 餵入）— 第 05 節的邊緣捲動也需要同一個值，所以一個改動服務兩項需求。啟動時的置中不能放在 <code>init</code>（那時還不知道寬度），要等第一次拿到非零寬度的一次性 effect。<code>todayStart()</code> 失去所有呼叫者，直接刪掉而不是留著。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">07</span>已確認的決定</h2>
+  <div class="cards three">
+    <div class="card"><span class="phase">1 · 緩衝</span><h3>採平台 touchSlop</h3><p>位移超過才動。用平台值而非自訂常數，讓 bar 跟裝置上其他可拖曳元件一致。跨越緩衝的位移不丟棄。</p></div>
+    <div class="card"><span class="phase">2 · 垂直</span><h3>忽略，不封鎖</h3><p>軸向在緩衝邊界判定。水平歸 bar 並鎖平移；垂直從不 consume，讓列表捲動器接走。見第 04 節。</p></div>
+    <div class="card"><span class="phase">3 · 邊緣門檻</span><h3>48dp</h3><p>固定<b>距離</b>、浮動<b>時間</b>：日刻度約 45 分，年刻度約三週。門檻描述的是螢幕邊緣的物理伸手範圍，而手指不隨螢幕尺寸縮放。</p></div>
+    <div class="card"><span class="phase">4 · 置中</span><h3>以時間軸區域為準</h3><p>排除 108dp 的左欄，紅線落在「代表時間的那塊畫面」正中 — 因此不是視窗正中。</p></div>
+    <div class="card"><span class="phase">5 · 吸附 chips</span><h3>保留，加「自動」</h3><p><code>snapOverride == null</code> 時選中「自動」。作業要求 snap interval 可配置，能<b>展示</b>需求被滿足值得一排控制列。</p></div>
+    <div class="card"><span class="phase">6 · 切換刻度</span><h3>不重新吸附既有任務</h3><p>bar 保留上次被編輯時的網格。全部重新吸附看起來整齊，但那是改寫使用者沒要求改的資料。</p></div>
+  </div>
+  <div class="note" style="margin-top:22px; background:var(--ok-soft); border-color:var(--ok)">
+    <b>進入時機已確認。</b>編輯從<strong>按下</strong>開始，沒有時間門檻。「長按」指的是「按住並持續拖動」的那整段過程 — 一次按住就涵蓋延長、縮短、位移三種編輯，放開即結束。所以不需要 <code>awaitLongPressOrCancellation</code>，按下與移動之間唯一的關卡就是第 1 項決定裡的緩衝距離。
+  </div>
+  <div class="note" style="margin-top:14px; background:var(--surface-2); border-color:var(--rule-strong)">
+    <b>三件只有實機能定的事。</b>子層優先分派是否真的讓 bar 贏過 <code>scrollable</code>（推論自 spec 001，從未在裝置上確認）；平台 touchSlop 當緩衝是否手感正確，或 bar 需要更大的值；自動捲動的速度斜坡 — 純手感。
+  </div>
+</section>
+
+<footer>
+  規格：<code>ai-cowork/003-edit-lock-and-scale-snap.md</code> · 基準 <code>v0.2.0</code> · 所有行號對照實際程式碼查證過
+</footer>
+
+</div>
+
+<script>
+  (function () {
+    var btn = document.getElementById('tt');
+    var root = document.documentElement;
+    try {
+      var saved = localStorage.getItem('tl-theme');
+      if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+    } catch (e) {}
+    btn.addEventListener('click', function () {
+      var dark = getComputedStyle(root).colorScheme.indexOf('dark') !== -1;
+      var next = dark ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('tl-theme', next); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>
