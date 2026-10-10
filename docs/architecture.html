@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timeline Scheduler — 框架與實作原理</title>
+<style>
+  :root{
+    color-scheme:light;
+    --ground:#F5F7FA; --surface:#FFFFFF; --surface-2:#EDF0F6; --surface-3:#E1E6F0;
+    --ink:#131722; --ink-2:#4C566A; --ink-3:#7A8498;
+    --rule:#DBE1EB; --rule-strong:#BDC5D5;
+    --accent:#3F6FE4; --accent-soft:#E7EDFC; --accent-ink:#2B55BC;
+    --ok:#0E9F8A; --ok-soft:#E0F4F0;
+    --warn:#C9741C; --warn-soft:#FBEEDC;
+    --bad:#D2495F; --bad-soft:#FBE7EA;
+    --idle-soft:#E9ECF3;
+    --bar-1:#3F6FE4; --bar-2:#0E9F8A; --bar-3:#E08A2E;
+    --bar-4:#8E5BD4; --bar-5:#D2495F; --bar-6:#2A9FB8;
+    --shadow:0 1px 2px rgba(19,23,34,.05), 0 10px 28px -20px rgba(19,23,34,.3);
+    --sans:system-ui,-apple-system,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    --serif:Georgia,"Songti TC","Times New Roman",serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      color-scheme:dark;
+      --ground:#0E1117; --surface:#161A22; --surface-2:#1D222C; --surface-3:#262C38;
+      --ink:#E7EAF1; --ink-2:#A4ADBE; --ink-3:#798395;
+      --rule:#262C38; --rule-strong:#3A4250;
+      --accent:#7D9CF2; --accent-soft:#1A2440; --accent-ink:#A6BCF8;
+      --ok:#34C3A8; --ok-soft:#102E2B;
+      --warn:#E3A054; --warn-soft:#33250F;
+      --bad:#E9697D; --bad-soft:#331A1F;
+      --idle-soft:#1F242F;
+      --bar-1:#5C85EC; --bar-2:#21B49C; --bar-3:#E89C48;
+      --bar-4:#A074E0; --bar-5:#DD6477; --bar-6:#3FB3CB;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -22px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --ground:#0E1117; --surface:#161A22; --surface-2:#1D222C; --surface-3:#262C38;
+    --ink:#E7EAF1; --ink-2:#A4ADBE; --ink-3:#798395;
+    --rule:#262C38; --rule-strong:#3A4250;
+    --accent:#7D9CF2; --accent-soft:#1A2440; --accent-ink:#A6BCF8;
+    --ok:#34C3A8; --ok-soft:#102E2B;
+    --warn:#E3A054; --warn-soft:#33250F;
+    --bad:#E9697D; --bad-soft:#331A1F;
+    --idle-soft:#1F242F;
+    --bar-1:#5C85EC; --bar-2:#21B49C; --bar-3:#E89C48;
+    --bar-4:#A074E0; --bar-5:#DD6477; --bar-6:#3FB3CB;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -22px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  img{max-width:100%}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:980px; margin:0 auto; padding-inline:20px; padding-block:36px 72px}
+
+  /* ---------- masthead ---------- */
+  .top{display:flex; align-items:flex-start; gap:16px}
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-3); display:flex; align-items:center; gap:10px;
+  }
+  .tickrule{
+    flex:1; min-width:30px; height:8px; border-bottom:1px solid var(--rule-strong);
+    background-image:repeating-linear-gradient(to right,var(--rule-strong) 0 1px,transparent 1px 12px);
+    background-position:bottom; background-repeat:repeat-x; background-size:12px 4px;
+  }
+  h1{font-family:var(--serif); font-weight:600; font-size:clamp(27px,5.6vw,40px); line-height:1.12; margin:12px 0 0; text-wrap:balance}
+  .standfirst{color:var(--ink-2); margin:12px 0 0; max-width:60ch; font-size:16px}
+  #tt{
+    flex:0 0 auto; margin-top:2px; background:var(--surface); color:var(--ink-2);
+    border:1px solid var(--rule-strong); border-radius:7px; padding:6px 11px;
+    font-family:var(--mono); font-size:11px; cursor:pointer;
+  }
+  #tt:hover{border-color:var(--accent); color:var(--accent-ink)}
+  #tt:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* ---------- sections ---------- */
+  section{margin-top:52px}
+  h2{font-family:var(--serif); font-weight:600; font-size:23px; margin:0 0 4px; display:flex; align-items:baseline; gap:11px}
+  h2 .num{font-family:var(--mono); font-size:12.5px; color:var(--accent)}
+  .lede{color:var(--ink-2); margin:0 0 4px; max-width:66ch; font-size:14.5px}
+  figure{margin:18px 0 0}
+  figcaption{font-size:12.5px; color:var(--ink-3); margin-top:9px; max-width:74ch}
+  figcaption code{font-size:11.5px}
+  code{font-family:var(--mono); font-size:.875em; background:var(--surface-2); border:1px solid var(--rule); border-radius:4px; padding:1px 5px}
+
+  .frame{background:var(--surface); border:1px solid var(--rule); border-radius:10px; padding:14px; box-shadow:var(--shadow)}
+  .scroller{overflow-x:auto}
+  .scroller svg{display:block; width:100%; min-width:620px; height:auto}
+  .duo{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px}
+  .duo .frame .scroller svg{min-width:0}
+
+  /* ---------- svg diagram tokens ---------- */
+  svg text{font-family:var(--sans)}
+  .t{fill:var(--ink); font-size:12px}
+  .tb{fill:var(--ink); font-size:12.5px; font-weight:600}
+  .t2{fill:var(--ink-2); font-size:11.5px}
+  .tm{fill:var(--ink); font-family:var(--mono); font-size:11px}
+  .tm2{fill:var(--ink-2); font-family:var(--mono); font-size:10.5px}
+  .lbl{fill:var(--ink-3); font-family:var(--mono); font-size:10px; letter-spacing:.07em}
+  .tw{fill:#fff; font-size:10.5px; font-weight:500}
+  .tok{fill:var(--ok); font-size:11.5px; font-weight:600}
+  .tbad{fill:var(--bad); font-size:11.5px; font-weight:600}
+  .tacc{fill:var(--accent-ink); font-family:var(--mono); font-size:10.5px}
+
+  .box{fill:var(--surface); stroke:var(--rule-strong); stroke-width:1}
+  .box2{fill:var(--surface-2); stroke:var(--rule); stroke-width:1}
+  .box3{fill:var(--surface-3); stroke:var(--rule); stroke-width:1}
+  .boxa{fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2}
+  .boxbad{fill:var(--bad-soft); stroke:var(--bad); stroke-width:1.2}
+  .boxdash{fill:none; stroke:var(--rule-strong); stroke-width:1.2; stroke-dasharray:5 4}
+  .boxadash{fill:var(--accent-soft); fill-opacity:.45; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:5 4}
+  .axis{stroke:var(--ink-2); stroke-width:1.5; fill:none}
+  .tick{stroke:var(--rule-strong); stroke-width:1}
+  .gridl{stroke:var(--rule-strong); stroke-width:1; stroke-dasharray:3 4}
+  .guide{stroke:var(--accent); stroke-width:1; stroke-dasharray:3 4; opacity:.6}
+  .dim{stroke:var(--accent); stroke-width:1.2; fill:none}
+  .flow{stroke:var(--ink-2); stroke-width:1.4; fill:none}
+  .flowdash{stroke:var(--ink-3); stroke-width:1.2; fill:none; stroke-dasharray:5 4}
+  .flowbad{stroke:var(--bad); stroke-width:1.4; fill:none}
+  .bc1{fill:var(--bar-1)} .bc2{fill:var(--bar-2)} .bc3{fill:var(--bar-3)}
+  .bc4{fill:var(--bar-4)} .bc5{fill:var(--bar-5)} .bc6{fill:var(--bar-6)}
+  #arr path{fill:var(--ink-2)} #arrA path{fill:var(--accent)} #arrB path{fill:var(--bad)}
+
+  /* ---------- screen mock ---------- */
+  .mock{border:1px solid var(--rule-strong); border-radius:10px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow); font-size:11px}
+  .mc{padding:9px 11px; border-bottom:1px solid var(--rule); display:flex; flex-direction:column; gap:7px}
+  .mr{display:flex; align-items:center; gap:5px; flex-wrap:wrap}
+  .chip{border:1px solid var(--rule-strong); border-radius:99px; padding:2.5px 11px; color:var(--ink-2); white-space:nowrap}
+  .chip.on{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); font-weight:600}
+  .sp{flex:1 1 auto; min-width:4px}
+  .nav{color:var(--accent-ink); padding:2px 8px; font-weight:600}
+  .md{font-family:var(--mono); font-weight:600; font-size:12px}
+  .zw{display:flex; align-items:center; gap:6px; color:var(--ink-3)}
+  .zoom{width:66px; height:3px; background:var(--surface-3); border-radius:99px; position:relative}
+  .zoom::before{content:""; position:absolute; inset:0 66% 0 0; background:var(--accent); border-radius:99px}
+  .zoom::after{content:""; position:absolute; left:34%; top:-3.5px; width:10px; height:10px; border-radius:50%; background:var(--accent)}
+  .mg{display:grid; grid-template-columns:100px 1fr}
+  .mcorner{border-right:1px solid var(--rule-strong); border-bottom:1px solid var(--rule)}
+  .maxis{border-bottom:1px solid var(--rule); display:flex; position:relative; height:32px}
+  .tk{flex:1 1 0; min-width:0; border-left:1px solid var(--rule); font-family:var(--mono); font-size:9.5px; color:var(--ink-3); padding:3px 0 0 4px; overflow:hidden; white-space:nowrap}
+  .tk.maj{border-left:1.5px solid var(--rule-strong); color:var(--ink-2); font-weight:600}
+  .mlabels{border-right:1px solid var(--rule-strong)}
+  .lab{height:40px; padding:0 9px; display:flex; flex-direction:column; justify-content:center; overflow:hidden}
+  .lab b{font-size:11px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .lab span{font-family:var(--mono); font-size:9px; color:var(--ink-3)}
+  .mlanes{position:relative}
+  .lane{height:40px; position:relative}
+  .lane::before{content:""; position:absolute; inset:0; background-image:repeating-linear-gradient(to right,var(--rule) 0 1px,transparent 1px 11.111%); opacity:.8}
+  .bar{position:absolute; top:8px; height:24px; border-radius:5px; display:flex; align-items:center; padding:0 6px; color:#fff; font-size:10px; font-weight:600; white-space:nowrap; overflow:hidden; min-width:10px}
+  .now{position:absolute; top:0; bottom:0; width:1.5px; background:var(--bad); opacity:.8}
+  .now.ax::after{content:""; position:absolute; bottom:-3px; left:-2.25px; width:6px; height:6px; border-radius:50%; background:var(--bad)}
+
+  /* ---------- scoreboard ---------- */
+  .score{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:9px; margin-top:18px}
+  .sc{background:var(--surface); border:1px solid var(--rule); border-left-width:3px; border-radius:7px; padding:10px 12px}
+  .sc.d{border-left-color:var(--ok)} .sc.p{border-left-color:var(--warn)} .sc.t{border-left-color:var(--rule-strong)}
+  .sc b{display:block; font-size:13px; font-weight:600}
+  .sc span{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase}
+  .sc.d span{color:var(--ok)} .sc.p span{color:var(--warn)} .sc.t span{color:var(--ink-3)}
+  .sc em{display:block; font-family:var(--mono); font-style:normal; font-size:10.5px; color:var(--ink-3); margin-top:3px}
+
+  .note{margin-top:22px; background:var(--warn-soft); border:1px solid var(--warn); border-radius:9px; padding:13px 15px; font-size:13.5px}
+  .note b{color:var(--warn)}
+  footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-3)}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arr"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+  <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+  <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+</defs></svg>
+
+<div class="page">
+
+<header>
+  <div class="top">
+    <div style="flex:1; min-width:0">
+      <div class="eyebrow"><span>Jetpack Compose</span><span class="tickrule"></span><span>2026-10-10</span></div>
+      <h1>Timeline Scheduler<br>框架與實作原理</h1>
+      <p class="standfirst">手刻的 Gantt 排程視圖。目前完成座標層、同步捲動的時間軸、以及靜態定位的任務 bar；手勢層另有規格文件。以下七張圖是整個框架的全貌。</p>
+    </div>
+    <button id="tt" type="button">主題</button>
+  </div>
+</header>
+
+<!-- ==================== 01 ==================== -->
+<section>
+  <h2><span class="num">01</span>目前的畫面</h2>
+  <p class="lede">用真實示範資料繪製。示範資料共 6 筆，此視窗（今天 09:00–18:00）只看得到 4 筆 — <code>整合測試</code> 在明天、<code>回歸測試週</code> 從後天起算四天，兩者都被裁切在視窗外。</p>
+  <figure class="mock">
+    <div class="mc">
+      <div class="mr">
+        <span class="chip on">日</span><span class="chip">週</span><span class="chip">月</span><span class="chip">年</span>
+        <span class="sp"></span><span class="nav">◀</span><span class="nav">今天</span><span class="nav">▶</span>
+      </div>
+      <div class="mr">
+        <span class="md">2026/10/10 五</span><span class="sp"></span>
+        <span class="zw"><span>縮放</span><span class="zoom"></span></span>
+      </div>
+    </div>
+    <div class="mg">
+      <div class="mcorner"></div>
+      <div class="maxis">
+        <span class="tk maj">09:00</span><span class="tk">10:00</span><span class="tk">11:00</span>
+        <span class="tk">12:00</span><span class="tk">13:00</span><span class="tk">14:00</span>
+        <span class="tk">15:00</span><span class="tk">16:00</span><span class="tk">17:00</span>
+        <span class="now ax" style="left:59.3%"></span>
+      </div>
+      <div class="mlabels">
+        <div class="lab"><b>需求確認</b><span>10/10 09:00</span></div>
+        <div class="lab"><b>設計稿</b><span>10/10 10:30</span></div>
+        <div class="lab"><b>API 開發</b><span>10/10 13:00</span></div>
+        <div class="lab"><b>站立會議</b><span>10/10 09:30</span></div>
+      </div>
+      <div class="mlanes">
+        <div class="lane"><span class="bar" style="left:0%;width:16.7%;background:var(--bar-1)">需求確認</span></div>
+        <div class="lane"><span class="bar" style="left:16.7%;width:33.3%;background:var(--bar-2)">設計稿</span></div>
+        <div class="lane"><span class="bar" style="left:44.4%;width:55.6%;background:var(--bar-3)">API 開發</span></div>
+        <div class="lane"><span class="bar" style="left:5.6%;width:2.8%;background:var(--bar-4)"></span></div>
+        <span class="now" style="left:59.3%"></span>
+      </div>
+    </div>
+  </figure>
+  <figcaption>紅線是「現在」標記。<code>站立會議</code> 只有 15 分鐘，在這個刻度下已經比它自己的文字還窄 — 這就是 bar 需要 <code>MinBarWidth</code> 下限、而邊緣 resize 把手需要另立規則的原因。</figcaption>
+</section>
+
+<!-- ==================== 02 ==================== -->
+<section>
+  <h2><span class="num">02</span>座標層：一條公式撐起全部</h2>
+  <p class="lede">時間軸在分鐘上嚴格線性。畫面上每一個位置都是同一個減法加乘法。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 275" role="img" aria-label="時間到像素的座標轉換示意圖">
+    <text x="480" y="26" class="lbl" text-anchor="middle">VIEWPORT = 螢幕寬度</text>
+    <rect x="255" y="38" width="450" height="104" rx="6" class="boxadash"/>
+
+    <rect x="390" y="56" width="175" height="26" rx="4" class="bc2"/>
+    <text x="398" y="73" class="tw">設計稿</text>
+
+    <line x1="390" y1="100" x2="565" y2="100" class="dim" marker-start="url(#arrA)" marker-end="url(#arrA)"/>
+    <text x="477" y="120" class="tacc" text-anchor="middle">widthOf(duration)</text>
+
+    <line x1="255" y1="38"  x2="255" y2="248" class="guide"/>
+    <line x1="390" y1="82"  x2="390" y2="248" class="guide"/>
+    <line x1="565" y1="82"  x2="565" y2="248" class="guide"/>
+
+    <text x="70" y="172" class="lbl" text-anchor="middle">ORIGIN</text>
+    <text x="70" y="186" class="tm2" text-anchor="middle">今天 00:00</text>
+    <line x1="70" y1="192" x2="70" y2="222" class="axis"/>
+    <line x1="40" y1="207" x2="880" y2="207" class="axis" marker-end="url(#arr)"/>
+    <g class="tick">
+      <line x1="125" y1="201" x2="125" y2="213"/><line x1="180" y1="201" x2="180" y2="213"/>
+      <line x1="235" y1="201" x2="235" y2="213"/><line x1="290" y1="201" x2="290" y2="213"/>
+      <line x1="345" y1="201" x2="345" y2="213"/><line x1="400" y1="201" x2="400" y2="213"/>
+      <line x1="455" y1="201" x2="455" y2="213"/><line x1="510" y1="201" x2="510" y2="213"/>
+      <line x1="565" y1="201" x2="565" y2="213"/><line x1="620" y1="201" x2="620" y2="213"/>
+      <line x1="675" y1="201" x2="675" y2="213"/><line x1="730" y1="201" x2="730" y2="213"/>
+      <line x1="785" y1="201" x2="785" y2="213"/><line x1="840" y1="201" x2="840" y2="213"/>
+    </g>
+    <text x="862" y="196" class="lbl">時間 →</text>
+
+    <line x1="70"  y1="248" x2="255" y2="248" class="dim" marker-start="url(#arrA)" marker-end="url(#arrA)"/>
+    <text x="162" y="266" class="tacc" text-anchor="middle">viewportStartMinutes</text>
+    <line x1="255" y1="248" x2="390" y2="248" class="dim" marker-start="url(#arrA)" marker-end="url(#arrA)"/>
+    <text x="322" y="266" class="tacc" text-anchor="middle">xOf(start)</text>
+  </svg>
+  </div></figure>
+  <figcaption><code>scheduler/TimeAxis.kt</code> — <code>xOf</code>、<code>timeAt</code>、<code>widthOf</code>、<code>snap</code> 四個純函式，沒有任何 Compose import，可以直接寫單元測試。<code>pxPerMinute = (scale.baseTickWidth × zoom).toPx() ÷ scale.nominalTickMinutes</code>：刻度提供基準寬度，縮放只是乘數，兩者互不干涉。</figcaption>
+</section>
+
+<!-- ==================== 03 ==================== -->
+<section>
+  <h2><span class="num">03</span>吸附錨定在 origin，不是任務自己</h2>
+  <p class="lede">這是個一行之差、但結果天壤之別的選擇。</p>
+  <div class="duo">
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 420 190" role="img" aria-label="錨定在 origin 的吸附結果">
+        <text x="10" y="18" class="tm">snap 錨定 origin</text>
+        <g class="gridl">
+          <line x1="60"  y1="34" x2="60"  y2="146"/><line x1="110" y1="34" x2="110" y2="146"/>
+          <line x1="160" y1="34" x2="160" y2="146"/><line x1="210" y1="34" x2="210" y2="146"/>
+          <line x1="260" y1="34" x2="260" y2="146"/><line x1="310" y1="34" x2="310" y2="146"/>
+          <line x1="360" y1="34" x2="360" y2="146"/><line x1="410" y1="34" x2="410" y2="146"/>
+        </g>
+        <text x="60" y="30" class="lbl">網格 = header 刻度</text>
+        <rect x="110" y="56" width="100" height="22" rx="4" class="bc1"/>
+        <rect x="210" y="98" width="150" height="22" rx="4" class="bc2"/>
+        <text x="10" y="170" class="tok">✓ 兩條 bar 落在同一組網格上</text>
+      </svg>
+    </div></figure>
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 420 190" role="img" aria-label="錨定在各任務起點的吸附結果">
+        <text x="10" y="18" class="tm">snap 錨定各自起點</text>
+        <g class="gridl">
+          <line x1="60"  y1="34" x2="60"  y2="146"/><line x1="110" y1="34" x2="110" y2="146"/>
+          <line x1="160" y1="34" x2="160" y2="146"/><line x1="210" y1="34" x2="210" y2="146"/>
+          <line x1="260" y1="34" x2="260" y2="146"/><line x1="310" y1="34" x2="310" y2="146"/>
+          <line x1="360" y1="34" x2="360" y2="146"/><line x1="410" y1="34" x2="410" y2="146"/>
+        </g>
+        <text x="60" y="30" class="lbl">網格 = header 刻度</text>
+        <rect x="128" y="56" width="100" height="22" rx="4" class="bc1"/>
+        <rect x="192" y="98" width="150" height="22" rx="4" class="bc5"/>
+        <line x1="110" y1="88" x2="128" y2="88" class="flowbad" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+        <line x1="192" y1="130" x2="210" y2="130" class="flowbad" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+        <text x="10" y="170" class="tbad">✗ 每條 bar 各有一套私有網格</text>
+      </svg>
+    </div></figure>
+  </div>
+  <figcaption>若以任務自身起點取模，兩條獨立拖曳的 bar 會落在互相錯開的格子上，也對不上 header 的刻度線。錨定 <code>origin</code> 是讓獨立編輯彼此一致的前提。</figcaption>
+</section>
+
+<!-- ==================== 04 ==================== -->
+<section>
+  <h2><span class="num">04</span>不用 <code>Modifier.horizontalScroll</code></h2>
+  <p class="lede">它需要一個「跟整段時間範圍一樣寬」的子元件。日刻度基準是每小時 64dp。</p>
+  <div class="duo">
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 420 200" role="img" aria-label="horizontalScroll 需要巨大子元件">
+        <text x="10" y="18" class="tm">Modifier.horizontalScroll</text>
+        <line x1="14" y1="48" x2="406" y2="48" class="dim" marker-start="url(#arrA)" marker-end="url(#arrA)"/>
+        <text x="210" y="40" class="tacc" text-anchor="middle">≈ 184,000dp ≈ 553,000px（4 個月）</text>
+        <rect x="14" y="62" width="392" height="52" rx="4" class="box2"/>
+        <text x="210" y="93" class="t2" text-anchor="middle">子元件必須整段被 measure 與 layout</text>
+        <rect x="34" y="54" width="86" height="68" rx="5" class="boxadash"/>
+        <text x="77" y="140" class="lbl" text-anchor="middle">螢幕</text>
+        <text x="10" y="178" class="tbad">✗ 為了幾百 px 的視窗，建出整條時間軸</text>
+      </svg>
+    </div></figure>
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 420 200" role="img" aria-label="scrollable 只建視窗">
+        <text x="10" y="18" class="tm">Modifier.scrollable</text>
+        <line x1="4" y1="88" x2="416" y2="88" class="axis" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <g class="tick">
+          <line x1="40" y1="82" x2="40" y2="94"/><line x1="76" y1="82" x2="76" y2="94"/>
+          <line x1="112" y1="82" x2="112" y2="94"/><line x1="148" y1="82" x2="148" y2="94"/>
+          <line x1="184" y1="82" x2="184" y2="94"/><line x1="220" y1="82" x2="220" y2="94"/>
+          <line x1="256" y1="82" x2="256" y2="94"/><line x1="292" y1="82" x2="292" y2="94"/>
+          <line x1="328" y1="82" x2="328" y2="94"/><line x1="364" y1="82" x2="364" y2="94"/>
+        </g>
+        <text x="210" y="40" class="tacc" text-anchor="middle">內容寬度 = 視窗寬度</text>
+        <rect x="167" y="54" width="86" height="68" rx="5" class="boxa"/>
+        <text x="210" y="140" class="lbl" text-anchor="middle">螢幕</text>
+        <text x="210" y="160" class="t2" text-anchor="middle">時間軸概念上無限長</text>
+        <text x="10" y="186" class="tok">✓ 只建視窗，fling 物理照樣免費</text>
+      </svg>
+    </div></figure>
+  </div>
+  <figcaption>捲動位置存在 <strong>時間域</strong>（<code>viewportStartMinutes: Double</code>）而非像素域。切換刻度或拖動縮放時，左緣自動釘在同一個時刻，不需要任何補償計算；<span style="white-space:nowrap">◀ ▶</span> 則是一次 <code>scale.step()</code> 的日曆運算，所以「移動一個月」會尊重當月的實際天數。</figcaption>
+</section>
+
+<!-- ==================== 05 ==================== -->
+<section>
+  <h2><span class="num">05</span>捲動由哪個階段讀取</h2>
+  <p class="lede">Compose 依序跑 composition → layout → draw。state 被<strong>讀取</strong>的階段，決定了它改變時要付多少代價。捲動每一 frame 都在改 <code>viewportStartMinutes</code>，所以每個讀取點都是刻意安排的。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 330" role="img" aria-label="Compose 三階段與捲動讀取點">
+    <text x="20" y="22" class="tok">✓ 目前的寫法</text>
+    <rect x="20" y="36" width="104" height="40" rx="6" class="boxa"/>
+    <text x="72" y="54" class="tm" text-anchor="middle">捲動 delta</text>
+    <text x="72" y="68" class="tm2" text-anchor="middle">每 frame</text>
+    <line x1="128" y1="56" x2="150" y2="56" class="flow" marker-end="url(#arr)"/>
+
+    <rect x="154" y="32" width="166" height="48" rx="6" class="box2"/>
+    <text x="237" y="52" class="tb" text-anchor="middle">Composition</text>
+    <text x="237" y="68" class="t2" text-anchor="middle">跳過</text>
+    <line x1="324" y1="56" x2="346" y2="56" class="flow" marker-end="url(#arr)"/>
+
+    <rect x="350" y="32" width="166" height="48" rx="6" class="boxa"/>
+    <text x="433" y="52" class="tb" text-anchor="middle">Layout</text>
+    <text x="433" y="68" class="tm2" text-anchor="middle">offset { } 重新定位</text>
+    <line x1="520" y1="56" x2="542" y2="56" class="flow" marker-end="url(#arr)"/>
+
+    <rect x="546" y="32" width="166" height="48" rx="6" class="boxa"/>
+    <text x="629" y="52" class="tb" text-anchor="middle">Draw</text>
+    <text x="629" y="68" class="tm2" text-anchor="middle">Canvas 重繪刻度</text>
+    <line x1="716" y1="56" x2="738" y2="56" class="flow" marker-end="url(#arr)"/>
+
+    <rect x="742" y="36" width="138" height="40" rx="6" class="box"/>
+    <text x="811" y="61" class="t" text-anchor="middle">新的一 frame</text>
+
+    <text x="154" y="104" class="lbl">只有控制列的日期標籤例外 —</text>
+    <text x="154" y="120" class="tm2">derivedStateOf { }：字串真的變了才重組</text>
+
+    <line x1="20" y1="150" x2="880" y2="150" class="tick"/>
+
+    <text x="20" y="180" class="tbad">✗ 若 bar 改用 offset(x = dp)（非 lambda）</text>
+    <rect x="20" y="194" width="104" height="40" rx="6" class="boxbad"/>
+    <text x="72" y="219" class="tm" text-anchor="middle">捲動 delta</text>
+    <line x1="128" y1="214" x2="150" y2="214" class="flowbad" marker-end="url(#arrB)"/>
+
+    <rect x="154" y="190" width="166" height="48" rx="6" class="boxbad"/>
+    <text x="237" y="210" class="tb" text-anchor="middle">Composition</text>
+    <text x="237" y="226" class="t2" text-anchor="middle">整棵子樹重組</text>
+    <line x1="324" y1="214" x2="346" y2="214" class="flowbad" marker-end="url(#arrB)"/>
+
+    <rect x="350" y="190" width="166" height="48" rx="6" class="boxbad"/>
+    <text x="433" y="210" class="tb" text-anchor="middle">Layout</text>
+    <text x="433" y="226" class="t2" text-anchor="middle">全部重新量測</text>
+    <line x1="520" y1="214" x2="542" y2="214" class="flowbad" marker-end="url(#arrB)"/>
+
+    <rect x="546" y="190" width="166" height="48" rx="6" class="boxbad"/>
+    <text x="629" y="210" class="tb" text-anchor="middle">Draw</text>
+    <text x="629" y="226" class="t2" text-anchor="middle">全部重繪</text>
+    <line x1="716" y1="214" x2="738" y2="214" class="flowbad" marker-end="url(#arrB)"/>
+
+    <rect x="742" y="194" width="138" height="40" rx="6" class="boxbad"/>
+    <text x="811" y="219" class="t" text-anchor="middle">同一 frame</text>
+
+    <text x="154" y="262" class="t2">每一條 lane 在每一 frame 都付三個階段的全額成本 — 畫面結果一樣，</text>
+    <text x="154" y="280" class="t2">成本差一個數量級。這是這份實作裡最容易被寫錯的一行。</text>
+  </svg>
+  </div></figure>
+  <figcaption>header 刻度與網格在 <code>Canvas</code> / <code>drawBehind</code> 的 draw phase 讀 state；bar 位移用 <code>offset { IntOffset(…) }</code> 的 lambda 版在 layout phase 讀。兩者都繞過 recomposition，也是 header 與內容不會互相抖動的原因。</figcaption>
+</section>
+
+<!-- ==================== 06 ==================== -->
+<section>
+  <h2><span class="num">06</span>軸是線性的，日曆不是</h2>
+  <p class="lede">只有一個 <code>pxPerMinute</code>，但刻度位置來自真實的 <code>LocalDateTime.plusMonths()</code>。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 140" role="img" aria-label="月份在線性軸上的寬度差異">
+    <rect x="70"    y="34" width="232.5" height="38" class="box2"/>
+    <rect x="302.5" y="34" width="210"   height="38" class="box3"/>
+    <rect x="512.5" y="34" width="232.5" height="38" class="box2"/>
+    <text x="186"   y="58" class="t" text-anchor="middle">1 月 · 31 天</text>
+    <text x="407.5" y="58" class="t" text-anchor="middle">2 月 · 28 天</text>
+    <text x="628.75" y="58" class="t" text-anchor="middle">3 月 · 31 天</text>
+    <line x1="40" y1="100" x2="880" y2="100" class="axis" marker-end="url(#arr)"/>
+    <g class="tick">
+      <line x1="70" y1="72" x2="70" y2="106"/><line x1="302.5" y1="72" x2="302.5" y2="106"/>
+      <line x1="512.5" y1="72" x2="512.5" y2="106"/><line x1="745" y1="72" x2="745" y2="106"/>
+    </g>
+    <text x="70" y="124" class="tm2" text-anchor="middle">1/1</text>
+    <text x="302.5" y="124" class="tm2" text-anchor="middle">2/1</text>
+    <text x="512.5" y="124" class="tm2" text-anchor="middle">3/1</text>
+    <text x="745" y="124" class="tm2" text-anchor="middle">4/1</text>
+    <line x1="302.5" y1="22" x2="512.5" y2="22" class="dim" marker-start="url(#arrA)" marker-end="url(#arrA)"/>
+    <text x="407.5" y="16" class="tacc" text-anchor="middle">2 月真的比較窄</text>
+  </svg>
+  </div></figure>
+  <figcaption>日曆的不規則性被隔離在刻度產生器裡，座標層完全不知道月份長度這回事。結果是閏年自動正確，而定位永遠只是一次乘法。</figcaption>
+</section>
+
+<!-- ==================== 07 ==================== -->
+<section>
+  <h2><span class="num">07</span>模組關係</h2>
+  <p class="lede">純函式核心在中間，Compose 只出現在兩端。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 340" role="img" aria-label="模組依賴與資料流">
+    <rect x="30" y="34" width="180" height="56" rx="7" class="box"/>
+    <text x="120" y="56" class="tb" text-anchor="middle">TimelineConfig</text>
+    <text x="120" y="74" class="tm2" text-anchor="middle">scale · zoom · snap</text>
+    <text x="120" y="86" class="tm2" text-anchor="middle">rowHeight</text>
+
+    <rect x="30" y="128" width="180" height="72" rx="7" class="box"/>
+    <text x="120" y="150" class="tb" text-anchor="middle">SchedulerState</text>
+    <text x="120" y="168" class="tm2" text-anchor="middle">tasks</text>
+    <text x="120" y="182" class="tm2" text-anchor="middle">viewportStartMinutes</text>
+    <text x="120" y="195" class="lbl" text-anchor="middle">@Stable，非 ViewModel</text>
+
+    <rect x="30" y="246" width="180" height="52" rx="7" class="boxdash"/>
+    <text x="120" y="268" class="tb" text-anchor="middle">手勢層</text>
+    <text x="120" y="286" class="tm2" text-anchor="middle">spec 001 · 未實作</text>
+
+    <line x1="120" y1="90"  x2="120" y2="124" class="flow" marker-end="url(#arr)"/>
+    <line x1="120" y1="246" x2="120" y2="204" class="flow" marker-end="url(#arr)"/>
+
+    <rect x="320" y="110" width="190" height="112" rx="7" class="boxa"/>
+    <text x="415" y="134" class="tb" text-anchor="middle">TimeAxis</text>
+    <text x="415" y="156" class="tm" text-anchor="middle">xOf · timeAt</text>
+    <text x="415" y="174" class="tm" text-anchor="middle">widthOf · snap</text>
+    <text x="415" y="200" class="lbl" text-anchor="middle">純函式 · 無 COMPOSE</text>
+
+    <path d="M210,62 C268,62 272,120 316,134" class="flow" marker-end="url(#arr)"/>
+    <line x1="210" y1="166" x2="316" y2="166" class="flow" marker-end="url(#arr)"/>
+
+    <rect x="620" y="68" width="250" height="62" rx="7" class="box"/>
+    <text x="745" y="92" class="tb" text-anchor="middle">TimelineHeader</text>
+    <text x="745" y="112" class="tm2" text-anchor="middle">Canvas · draw phase</text>
+
+    <rect x="620" y="186" width="250" height="62" rx="7" class="box"/>
+    <text x="745" y="210" class="tb" text-anchor="middle">TimelineContent</text>
+    <text x="745" y="230" class="tm2" text-anchor="middle">offset { } · layout phase</text>
+
+    <line x1="510" y1="146" x2="616" y2="108" class="flow" marker-end="url(#arr)"/>
+    <line x1="510" y1="188" x2="616" y2="208" class="flow" marker-end="url(#arr)"/>
+
+    <path d="M210,188 C250,188 250,318 420,318 L740,318 L740,252" class="flowdash" marker-end="url(#arr)"/>
+    <text x="470" y="310" class="lbl" text-anchor="middle">viewportStartMinutes 由 layout / draw phase 直接讀取</text>
+  </svg>
+  </div></figure>
+  <figcaption>11 個新檔案。<code>TimeAxis</code> 不 import 任何 Compose，所以能在 <code>app/src/test/</code> 用純 JVM 測試；<code>SchedulerState</code> 刻意是一般的 <code>@Stable</code> class 而非 ViewModel — 單一畫面、無 I/O、沒有需要撐過 process death 的東西。</figcaption>
+</section>
+
+<!-- ==================== 進度 ==================== -->
+<section>
+  <h2><span class="num">08</span>對照作業要求</h2>
+  <div class="score">
+    <div class="sc d"><span>完成</span><b>時間軸 header 與可讀標籤</b><em>TimelineHeader.kt</em></div>
+    <div class="sc d"><span>完成</span><b>水平捲動、header 同步</b><em>SchedulerScreen.kt</em></div>
+    <div class="sc d"><span>完成</span><b>bar 依 start / duration 定位</b><em>TimelineContent.kt</em></div>
+    <div class="sc d"><span>完成</span><b>示範資料</b><em>SampleData.kt</em></div>
+    <div class="sc d"><span>完成</span><b>四個可配置參數</b><em>TimelineConfig.kt</em></div>
+    <div class="sc p"><span>部分</span><b>吸附到時間網格</b><em>snap() 已實作，尚無呼叫者</em></div>
+    <div class="sc t"><span>已規格化</span><b>拖曳移動 bar</b><em>001-gesture-layer.md</em></div>
+    <div class="sc t"><span>已規格化</span><b>拖曳邊緣 resize</b><em>001-gesture-layer.md</em></div>
+  </div>
+  <figcaption>刻度與縮放已有 UI 控制；吸附間隔與列高目前只有 setter。規格之外額外做的：<span style="white-space:nowrap">◀ 今天 ▶</span> 導覽、「現在」標記線、固定左欄、縮放 slider、關閉 dynamic color。</figcaption>
+
+  <div class="note">
+    <b>一項待實機驗證。</b><code>Modifier.scrollable</code> 的 delta 正負號是依文件慣例推導的 — 向右拖曳得到正值、應顯示更早的時間，也就是 <code>SchedulerState.scrollByPx</code> 裡的那個減法。尚未在實機確認。若捲動方向相反，改那一個運算子即可。
+  </div>
+</section>
+
+<footer>
+  Timeline · Jetpack Compose · AGP 9.4.1 · Kotlin 2.2.10 · Compose BOM 2026.02.01 · minSdk 34，所以 <code>java.time</code> 不需要 desugaring。
+</footer>
+
+</div>
+
+<script>
+  (function () {
+    var btn = document.getElementById('tt');
+    var root = document.documentElement;
+    try {
+      var saved = localStorage.getItem('tl-theme');
+      if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+    } catch (e) {}
+    btn.addEventListener('click', function () {
+      var dark = getComputedStyle(root).colorScheme.indexOf('dark') !== -1;
+      var next = dark ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('tl-theme', next); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>
