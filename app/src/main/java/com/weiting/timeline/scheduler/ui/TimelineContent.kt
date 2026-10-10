@@ -1,10 +1,18 @@
 package com.weiting.timeline.scheduler.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -14,10 +22,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.weiting.timeline.scheduler.DragMode
 import com.weiting.timeline.scheduler.SchedulerState
 import com.weiting.timeline.scheduler.TimeAxis
 import com.weiting.timeline.scheduler.hitTestBar
@@ -40,6 +52,7 @@ import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -53,6 +66,11 @@ private val MinBarWidth = 52.dp
 private val MinGripWidth = 34.dp
 
 private val BarVerticalInset = 9.dp
+
+/** Discovery hint timing: a brief settle, then a staggered ripple down the lanes. */
+private const val HintPulses = 3
+private const val HintStartDelay = 450L
+private const val HintStagger = 70L
 private val BarShape = RoundedCornerShape(6.dp)
 
 /**
@@ -91,8 +109,10 @@ fun TimelineContent(
             drawNowLine(axis, viewportStart, nowColor)
         },
     ) {
-        state.tasks.forEach { task ->
-            key(task.id) { TaskLane(state = state, axis = axis, task = task) }
+        state.tasks.forEachIndexed { index, task ->
+            key(task.id) {
+                TaskLane(state = state, axis = axis, task = task, laneIndex = index)
+            }
         }
     }
 }
@@ -102,6 +122,7 @@ private fun TaskLane(
     state: SchedulerState,
     axis: TimeAxis,
     task: Task,
+    laneIndex: Int,
 ) {
     val config = state.config
     val density = LocalDensity.current
@@ -121,8 +142,26 @@ private fun TaskLane(
 
     // Capped at a third of the bar so the middle always stays grabbable for a move.
     val handlePx = min(with(density) { config.edgeHandleWidth.toPx() }, barWidthPx / 3f)
+    val handleWidth = with(density) { handlePx.toDp() }
     val pxPerMinute = axis.pxPerMinute
     val showGrips = barWidth >= MinGripWidth
+
+    // Which zone the finger is on right now, for the press reaction. Falls back to the
+    // in-flight drag so the highlight survives past the touch-slop handover.
+    var pressedZone by remember(task.id) { mutableStateOf<DragMode?>(null) }
+    val activeZone = draft?.mode ?: pressedZone
+
+    // A short, finite discovery hint: the grips breathe a few times on first appearance
+    // and then stop. An infinite transition would be a permanent distraction, and a
+    // static grip is easy to miss as an affordance.
+    val hint = remember { Animatable(0f) }
+    LaunchedEffect(task.id) {
+        delay(HintStartDelay + laneIndex * HintStagger)
+        repeat(HintPulses) {
+            hint.animateTo(1f, tween(durationMillis = 420, easing = FastOutSlowInEasing))
+            hint.animateTo(0f, tween(durationMillis = 420, easing = FastOutSlowInEasing))
+        }
+    }
 
     Box(
         Modifier
@@ -147,10 +186,22 @@ private fun TaskLane(
                         Modifier
                     },
                 )
+                // Observation only, and it consumes nothing: it reports which zone the
+                // finger landed on so the bar can react before the drag even starts.
+                .pointerInput(task.id, barWidthPx, handlePx) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        pressedZone = hitTestBar(down.position.x, barWidthPx, handlePx)
+                        waitForUpOrCancellation()
+                        pressedZone = null
+                    }
+                }
                 .pointerInput(task.id, pxPerMinute, barWidthPx, handlePx) {
                     detectHorizontalDragGestures(
                         onDragStart = { offset ->
-                            state.beginDrag(task, hitTestBar(offset.x, barWidthPx, handlePx))
+                            // task.id, never the Task: a stale captured Task would rewind
+                            // the edit. See SchedulerState.beginDrag.
+                            state.beginDrag(task.id, hitTestBar(offset.x, barWidthPx, handlePx))
                         },
                         onDragEnd = { state.commitDrag() },
                         onDragCancel = { state.cancelDrag() },
@@ -163,6 +214,18 @@ private fun TaskLane(
                 },
             contentAlignment = Alignment.CenterStart,
         ) {
+            // The zone the finger is on, lit up. This is the whole hint: press anywhere
+            // and the bar tells you what that spot does.
+            when (activeZone) {
+                DragMode.ResizeStart -> ZoneHighlight(
+                    Modifier.align(Alignment.CenterStart).width(handleWidth),
+                )
+                DragMode.ResizeEnd -> ZoneHighlight(
+                    Modifier.align(Alignment.CenterEnd).width(handleWidth),
+                )
+                DragMode.Move -> ZoneHighlight(Modifier.fillMaxSize(), alpha = 0.12f)
+                null -> Unit
+            }
             Text(
                 text = task.title,
                 style = MaterialTheme.typography.labelMedium,
@@ -172,22 +235,39 @@ private fun TaskLane(
                 modifier = Modifier.padding(horizontal = if (showGrips) 11.dp else 6.dp),
             )
             if (showGrips) {
-                Grip(Modifier.align(Alignment.CenterStart).padding(start = 4.dp), dragging)
-                Grip(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp), dragging)
+                Grip(
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 4.dp),
+                    emphasis = if (activeZone == DragMode.ResizeStart) 1f else hint.value,
+                )
+                Grip(
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp),
+                    emphasis = if (activeZone == DragMode.ResizeEnd) 1f else hint.value,
+                )
             }
         }
     }
 }
 
-/** The visible affordance for an edge-resize handle. */
+/** Translucent wash over whichever zone the finger is on. */
 @Composable
-private fun Grip(modifier: Modifier, dragging: Boolean) {
+private fun ZoneHighlight(modifier: Modifier, alpha: Float = 0.22f) {
+    Box(modifier.fillMaxHeight().background(Color.White.copy(alpha = alpha)))
+}
+
+/**
+ * The visible affordance for an edge-resize handle. [emphasis] runs 0..1 and drives both
+ * the opacity and the height, so the hint pulse reads as the grip growing rather than
+ * merely brightening.
+ */
+@Composable
+private fun Grip(modifier: Modifier, emphasis: Float) {
+    val e = emphasis.coerceIn(0f, 1f)
     Box(
         modifier
             .width(2.dp)
-            .height(12.dp)
+            .height(11.dp + 5.dp * e)
             .clip(RoundedCornerShape(1.dp))
-            .background(Color.White.copy(alpha = if (dragging) 0.95f else 0.55f)),
+            .background(Color.White.copy(alpha = 0.5f + 0.45f * e)),
     )
 }
 
