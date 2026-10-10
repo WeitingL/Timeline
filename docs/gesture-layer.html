@@ -191,6 +191,29 @@
   .dotraw{fill:var(--ink-2)}
   .phase{display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em;
     text-transform:uppercase; color:var(--ink-3); margin-bottom:5px}
+  /* table (intent map) */
+  .tablewrap{overflow-x:auto; margin-top:20px; border:1px solid var(--rule);
+    border-radius:9px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:470px}
+  th,td{text-align:left; padding:9px 14px; border-bottom:1px solid var(--rule); vertical-align:top}
+  thead th{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-3); font-weight:500; background:var(--surface-2); white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  td b{font-weight:600; color:var(--ink)}
+  /* grouped list (preview inventory) */
+  .files{margin-top:20px; border:1px solid var(--rule); border-radius:9px;
+    overflow:hidden; background:var(--surface)}
+  .fgroup{font-family:var(--mono); font-size:11px; color:var(--ink-3);
+    background:var(--surface-2); padding:7px 14px; border-bottom:1px solid var(--rule)}
+  .frow{display:grid; grid-template-columns:minmax(0,78px) 1fr; gap:4px 18px;
+    padding:10px 14px; border-bottom:1px solid var(--rule)}
+  .frow:last-child{border-bottom:0}
+  .frow .f{font-family:var(--mono); font-size:12.5px; font-weight:600}
+  .frow .r{font-size:13px; color:var(--ink-2)}
+  @media (max-width:560px){ .frow{grid-template-columns:1fr} }
+  .wash{fill:#fff; opacity:.24}
+  .washsoft{fill:#fff; opacity:.13}
+  .griplit{fill:#fff; opacity:.95}
   .card h3{font-size:14.5px; margin-top:2px}
   .cards.three{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
 </style>
@@ -209,7 +232,7 @@
     <div style="flex:1; min-width:0">
       <div class="eyebrow"><span>Spec 001</span><span class="tickrule"></span><span>2026-10-10</span></div>
       <h1>手勢層<br>拖曳 · Resize · 吸附</h1>
-      <p class="standfirst">任務 bar 從靜態變成可操作。三種手勢共用一份 draft，全部吸附到可配置的時間網格。以下七張圖是這次實作的全部決策。</p>
+      <p class="standfirst">任務 bar 從靜態變成可操作：三種單指手勢共用一份 draft、兩指滑動切換區間、按下即顯示命中區。以下的圖是這一層的全部決策，包含一個實際回報的 bug 與它的修法。</p>
       <p style="margin:14px 0 0"><a href="architecture.html">← 回到框架總覽</a></p>
     </div>
     <button id="tt" type="button">主題</button>
@@ -218,7 +241,10 @@
     <div class="sc d"><span>完成</span><b>拖曳移動 bar</b><em>start 改變</em></div>
     <div class="sc d"><span>完成</span><b>拖曳邊緣 resize</b><em>左緣 / 右緣</em></div>
     <div class="sc d"><span>完成</span><b>吸附到時間網格</b><em>即時 / 放手 可切換</em></div>
-    <div class="sc d"><span>測試</span><b>28 項單元測試</b><em>純 JVM · 無需裝置</em></div>
+    <div class="sc d"><span>完成</span><b>兩指滑動切換區間</b><em>Initial pass 搶下手勢</em></div>
+    <div class="sc d"><span>完成</span><b>按下顯示命中區</b><em>+ grip 探索提示</em></div>
+    <div class="sc d"><span>測試</span><b>30 項單元測試</b><em>純 JVM · 無需裝置</em></div>
+    <div class="sc d"><span>工具</span><b>17 個 Compose Preview</b><em>含三種拖曳狀態</em></div>
   </div>
 </header>
 
@@ -263,9 +289,150 @@
   </div></figure>
   <figcaption>虛線是手勢開始前的位置。<code>ResizeStart</code> 之所以兩個欄位都要改，是因為 <code>Task</code> 存的是 <code>start + duration</code> — 要釘住 <code>end</code>，就得讓 duration 反向吸收等量的位移。</figcaption>
 </section>
+<section>
+  <h2><span class="num">02</span>意圖解析：位置 × 手指數</h2>
+  <p class="lede">五個觸碰區塊、三種手勢形態，交叉決定意圖。沒有任何一格需要使用者猜。</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>觸碰位置</th><th>一指水平</th><th>一指垂直</th><th>兩指水平</th></tr></thead>
+      <tbody>
+        <tr><td>bar 左把手</td><td><b>edit start</b></td><td>列表捲動（穿透）</td><td>切換區間</td></tr>
+        <tr><td>bar 中段</td><td><b>move task</b></td><td>列表捲動（穿透）</td><td>切換區間</td></tr>
+        <tr><td>bar 右把手</td><td><b>edit duration</b></td><td>列表捲動（穿透）</td><td>切換區間</td></tr>
+        <tr><td>空白 lane</td><td><b>平移時間軸</b></td><td>列表捲動</td><td>切換區間</td></tr>
+        <tr><td>時間軸 header</td><td><b>平移時間軸</b></td><td>—</td><td>切換區間</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <figcaption>背景的兩個區塊（空白 lane 與 header）行為刻意一致 — 都是自由平移。垂直穿透不需要寫任何程式：<code>detectHorizontalDragGestures</code> 內部的 <code>awaitHorizontalTouchSlopOrCancellation</code> 在垂直位移先超過 slop 時會取消且<strong>不消耗事件</strong>，父層的 <code>verticalScroll</code> 照樣收得到。兩指滑動在拖曳進行中被抑制，所以編輯中途多落一根手指不會劫走手勢。</figcaption>
+</section>
+<section>
+  <h2><span class="num">03</span>過期的 task：第二次編輯為何倒退</h2>
+  <p class="lede">一個實際回報的 bug。症狀是「第二次移動同一條 bar，它彈回第一次編輯前的位置」。原因不在拖曳邏輯，在 <code>pointerInput</code> 的 key 語意。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 330" role="img" aria-label="pointerInput 捕捉過期 task 的流程">
+    <rect x="20" y="30" width="200" height="52" rx="6" class="box"/>
+    <text x="120" y="52" class="tb" text-anchor="middle">第一次組合</text>
+    <text x="120" y="70" class="tm2" text-anchor="middle">task.start = 09:00</text>
+    <line x1="224" y1="56" x2="246" y2="56" class="flow" marker-end="url(#arr)"/>
+    <rect x="250" y="30" width="250" height="52" rx="6" class="boxa"/>
+    <text x="375" y="52" class="tb" text-anchor="middle">pointerInput block 啟動</text>
+    <text x="375" y="70" class="tm2" text-anchor="middle">lambda 捕捉 task（09:00）</text>
+    <line x1="504" y1="56" x2="526" y2="56" class="flow" marker-end="url(#arr)"/>
+    <rect x="530" y="30" width="230" height="52" rx="6" class="box"/>
+    <text x="645" y="52" class="tb" text-anchor="middle">第一次 move 提交</text>
+    <text x="645" y="70" class="tm2" text-anchor="middle">tasks[1] = 09:30</text>
+
+    <path d="M645,86 L645,104" class="flow" marker-end="url(#arr)"/>
+
+    <rect x="330" y="108" width="430" height="88" rx="6" class="box2"/>
+    <text x="545" y="130" class="tb" text-anchor="middle">TaskLane 重組，key 逐一比對</text>
+    <text x="350" y="152" class="tm2">task.id</text><text x="470" y="152" class="tok">相同</text>
+    <text x="560" y="152" class="tm2">pxPerMinute</text><text x="700" y="152" class="tok">相同</text>
+    <text x="350" y="172" class="tm2">barWidthPx</text><text x="470" y="172" class="tok">相同</text>
+    <text x="560" y="172" class="tm2">handlePx</text><text x="700" y="172" class="tok">相同</text>
+    <text x="545" y="190" class="tm2" text-anchor="middle">move 不改 duration，寬度自然沒變</text>
+
+    <path d="M330,152 L240,152" class="flowbad" marker-end="url(#arrB)"/>
+    <rect x="20" y="126" width="214" height="52" rx="6" class="boxbad"/>
+    <text x="127" y="148" class="tb" text-anchor="middle">block 不重啟</text>
+    <text x="127" y="166" class="tm2" text-anchor="middle">仍持有 task（09:00）</text>
+    <path d="M127,182 L127,206" class="flowbad" marker-end="url(#arrB)"/>
+
+    <rect x="20" y="210" width="430" height="52" rx="6" class="boxbad"/>
+    <text x="235" y="232" class="tb" text-anchor="middle">第二次拖曳 → beginDrag(過期 task)</text>
+    <text x="235" y="250" class="tm2" text-anchor="middle">originalStart = 09:00 → bar 彈回編輯前</text>
+
+    <line x1="20" y1="286" x2="880" y2="286" class="tick"/>
+    <rect x="20" y="300" width="300" height="26" rx="5" class="boxa"/>
+    <text x="34" y="318" class="tm">beginDrag(taskId: String)</text>
+    <line x1="324" y1="313" x2="346" y2="313" class="flow" marker-end="url(#arr)"/>
+    <text x="352" y="318" class="tok">呼叫端手上沒有 Task 物件可以過期</text>
+  </svg>
+  </div></figure>
+  <figcaption>修法不是補 key，是改簽名。補 <code>task</code> 進 key 清單只能讓它這次不壞；把 <code>beginDrag</code> 改收 <code>taskId</code>、由它自己從 <code>tasks</code> 查，則是讓這個 bug <strong>無法被表達</strong>。<br><br>值得記下的是：原本的測試 <code>a second drag starts from the committed position</code> 是綠的，因為它寫成 <code>s.beginDrag(s.tasks[0], …)</code> — 每次都從 list 重讀，永遠拿到新物件。它測的是 state machine，而 bug 活在 Compose 的 key 語意裡，單元測試從那個角度看不到。</figcaption>
+</section>
+<section>
+  <h2><span class="num">04</span>為什麼用手指數，不用位置</h2>
+  <p class="lede">平移時間軸與切換區間是<strong>同一條軸上的同一種動作</strong>。靠位置區分它們會產生一個看不見的邊界。</p>
+  <div class="duo">
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 210" role="img" aria-label="用位置區分造成的相鄰歧義">
+        <text x="14" y="20" class="tm">靠位置區分</text>
+        <rect x="20" y="44" width="180" height="30" rx="5" class="bc3"/>
+        <text x="30" y="64" class="tw">API 開發</text>
+        <rect x="200" y="44" width="210" height="30" rx="5" class="box2"/>
+        <text x="305" y="64" class="t2" text-anchor="middle">空白</text>
+        <line x1="200" y1="36" x2="200" y2="86" class="flowbad"/>
+        <text x="200" y="30" class="tbad" text-anchor="middle">無任何視覺邊界</text>
+        <path d="M150,100 L196,80" class="leader"/>
+        <text x="146" y="116" class="tm2" text-anchor="end">移動 15 分</text>
+        <path d="M250,100 L206,80" class="leader"/>
+        <text x="254" y="116" class="tm2">整頁跳一天</text>
+        <text x="14" y="152" class="tbad">✗ 落點差幾個 dp，結果差兩個數量級</text>
+        <text x="14" y="172" class="t2">誤觸的代價不對稱：一邊只是迷路，</text>
+        <text x="14" y="190" class="t2">另一邊改了資料。</text>
+      </svg>
+    </div></figure>
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 210" role="img" aria-label="用手指數區分">
+        <text x="14" y="20" class="tm">靠手指數區分</text>
+        <rect x="20" y="44" width="180" height="30" rx="5" class="bc3"/>
+        <text x="30" y="64" class="tw">API 開發</text>
+        <rect x="200" y="44" width="210" height="30" rx="5" class="box2"/>
+        <text x="305" y="64" class="t2" text-anchor="middle">空白</text>
+        <circle cx="110" cy="110" r="7" class="dotok2"/>
+        <text x="126" y="115" class="tm2">一指 → 依位置決定（移動／平移／resize）</text>
+        <circle cx="104" cy="142" r="7" class="dotok2"/>
+        <circle cx="122" cy="142" r="7" class="dotok2"/>
+        <text x="140" y="147" class="tm2">兩指 → 切換區間，位置無關</text>
+        <text x="14" y="184" class="tok">✓ 手指數本身就是意圖宣告</text>
+        <text x="14" y="202" class="t2">不佔螢幕、沒有邊界可踩錯。</text>
+      </svg>
+    </div></figure>
+  </div>
+  <figcaption>實作在 <code>PointerEventPass.Initial</code> 上監看 — 父層在這一輪比子層先收到事件，所以它能在 bar 與 <code>scrollable</code> 之前把手勢搶下來。單指事件完全不碰，一指平移與編輯行為維持原樣。兩指的位移取各指的平均，所以 pinch（兩指反向）會互相抵銷、不會誤判成滑動。</figcaption>
+</section>
+<section>
+  <h2><span class="num">05</span>按下就知道這裡做什麼</h2>
+  <p class="lede">三個命中區在視覺上是隱形的。按下的瞬間讓它顯形，使用者不需要先猜再試。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 190" role="img" aria-label="三個命中區按下時的反應">
+    <text x="20" y="24" class="lbl">按在左把手</text>
+    <rect x="20" y="36" width="250" height="34" rx="5" class="bc2"/>
+    <rect x="20" y="36" width="42" height="34" class="wash"/>
+    <rect x="26" y="45" width="2" height="16" rx="1" class="griplit"/>
+    <rect x="262" y="48" width="2" height="11" rx="1" class="grip"/>
+    <text x="80" y="58" class="tw">設計稿</text>
+    <text x="20" y="92" class="tm2">→ edit start</text>
+
+    <text x="325" y="24" class="lbl">按在中段</text>
+    <rect x="325" y="36" width="250" height="34" rx="5" class="bc2"/>
+    <rect x="325" y="36" width="250" height="34" rx="5" class="washsoft"/>
+    <rect x="331" y="48" width="2" height="11" rx="1" class="grip"/>
+    <rect x="567" y="48" width="2" height="11" rx="1" class="grip"/>
+    <text x="385" y="58" class="tw">設計稿</text>
+    <text x="325" y="92" class="tm2">→ move task</text>
+
+    <text x="630" y="24" class="lbl">按在右把手</text>
+    <rect x="630" y="36" width="250" height="34" rx="5" class="bc2"/>
+    <rect x="838" y="36" width="42" height="34" class="wash"/>
+    <rect x="636" y="48" width="2" height="11" rx="1" class="grip"/>
+    <rect x="872" y="45" width="2" height="16" rx="1" class="griplit"/>
+    <text x="690" y="58" class="tw">設計稿</text>
+    <text x="630" y="92" class="tm2">→ edit duration</text>
+
+    <line x1="20" y1="118" x2="880" y2="118" class="tick"/>
+    <text x="20" y="142" class="lbl">首次出現時的探索提示</text>
+    <text x="20" y="164" class="t2">兩端的 grip 呼吸三次後停止，依列序錯開 70ms 形成漣漪。</text>
+    <text x="20" y="182" class="t2">無限循環的動畫會變成永久干擾；靜態的 grip 則容易被當成裝飾。</text>
+  </svg>
+  </div></figure>
+  <figcaption>按壓偵測是一個<strong>不消耗任何事件</strong>的獨立 <code>pointerInput</code>（<code>awaitFirstDown</code> + <code>waitForUpOrCancellation</code>），所以它不會干擾拖曳偵測。高亮狀態取 <code>draft?.mode ?: pressedZone</code> — 因為 <code>waitForUpOrCancellation()</code> 在拖曳開始（事件被消耗）時就會返回，光靠按壓狀態會在手勢交棒的瞬間閃掉。</figcaption>
+</section>
 
 <section>
-  <h2><span class="num">02</span>Bar 的三個命中區</h2>
+  <h2><span class="num">06</span>Bar 的三個命中區</h2>
   <p class="lede">把手寬度在執行期被壓到「bar 寬度的三分之一」以內，所以再窄的 bar 都還留著可以移動的中段。</p>
   <div class="duo">
     <figure class="frame"><div class="scroller">
@@ -307,7 +474,7 @@
 </section>
 
 <section>
-  <h2><span class="num">03</span>為什麼需要 draft</h2>
+  <h2><span class="num">07</span>為什麼需要 draft</h2>
   <p class="lede"><code>tasks</code> 是 <code>SnapshotStateList</code>。每 frame 寫進去，代價不只落在被拖的那一條。</p>
   <div class="duo">
     <figure class="frame"><div class="scroller">
@@ -345,7 +512,7 @@
 </section>
 
 <section>
-  <h2><span class="num">04</span>累積原始位移，不要回灌吸附值</h2>
+  <h2><span class="num">08</span>累積原始位移，不要回灌吸附值</h2>
   <p class="lede">這是整個實作最細、也最容易寫錯的一點。每 frame 的 draft 必須從「手勢開始時的原始時間 + 累積的原始像素」推導，不能從上一個 frame 的 draft 推導。</p>
   <figure class="frame"><div class="scroller">
   <svg viewBox="0 0 900 300" role="img" aria-label="累積原始位移與回灌吸附值的差異">
@@ -388,7 +555,7 @@
 </section>
 
 <section>
-  <h2><span class="num">05</span>夾限優先於吸附</h2>
+  <h2><span class="num">09</span>夾限優先於吸附</h2>
   <p class="lede">Resize 拖過對側邊緣時，bar 停住，而不是反轉。負長度在任何時刻都不可表示。</p>
   <figure class="frame"><div class="scroller">
   <svg viewBox="0 0 900 200" role="img" aria-label="resize 夾限行為">
@@ -412,7 +579,7 @@
 </section>
 
 <section>
-  <h2><span class="num">06</span>手勢如何贏過捲動</h2>
+  <h2><span class="num">10</span>手勢如何贏過捲動</h2>
   <p class="lede">bar 的祖先掛著水平 <code>Modifier.scrollable</code>。兩者會爭奪同一根手指。</p>
   <figure class="frame"><div class="scroller">
   <svg viewBox="0 0 900 230" role="img" aria-label="指標事件的分派與消耗">
@@ -451,7 +618,7 @@
 </section>
 
 <section>
-  <h2><span class="num">07</span>即時吸附 vs 放手才吸附</h2>
+  <h2><span class="num">11</span>即時吸附 vs 放手才吸附</h2>
   <p class="lede">兩者落在完全相同的網格上，差的只有手感。所以它是一個開關，不是一個正確性問題。</p>
   <figure class="frame"><div class="scroller">
   <svg viewBox="0 0 900 250" role="img" aria-label="兩種吸附模式下 bar 位置對手指位移的曲線">
@@ -487,7 +654,7 @@
 </section>
 
 <section>
-  <h2><span class="num">08</span>七個開放問題的結論</h2>
+  <h2><span class="num">12</span>七個開放問題的結論</h2>
   <div class="cards three">
     <div class="card"><span class="phase">Q1 · 吸附時機</span><h3>兩者都做，預設即時</h3><p>做成 <code>snapWhileDragging</code> 開關，控制列可切換。commit 時無條件再吸附一次，所以兩種模式最終都落在格線上。</p></div>
     <div class="card"><span class="phase">Q2 · 窄 bar</span><h3>任何寬度都能 resize</h3><p>把手 = <code>min(18dp, 寬度/3)</code>，中間三分之一永遠是移動區。<code>MinBarWidth</code> 提到 52dp。</p></div>
@@ -498,6 +665,23 @@
     <div class="card"><span class="phase">Q7 · 重疊</span><h3>純顯示</h3><p>不強制任何排程約束。任務可自由重疊，同列或跨列皆可。</p></div>
     <div class="card"><span class="phase">尚未驗證</span><h3>需要真實螢幕</h3><p>指標分派順序是否真的讓 bar 贏過 <code>scrollable</code>，以及 <code>scrollable</code> 的 delta 正負號 — 兩者都只有手指碰到螢幕才能確認。</p></div>
   </div>
+</section>
+<section>
+  <h2><span class="num">13</span>Compose Preview 清單</h2>
+  <p class="lede">17 個 <code>@Preview</code>，集中在 <code>ui/SchedulerPreviews.kt</code>。拖曳狀態是靠直接驅動 <code>SchedulerState</code> 擺出來的 — 這一點之所以可行，正是因為狀態持有者是一般 class 而非 ViewModel。</p>
+  <div class="files">
+    <div class="fgroup">整體畫面</div>
+    <div class="frow"><div class="f">01–05</div><div class="r">四種刻度各一張，加上日刻度的深色版。刻度密度、標籤 stride 與最小 bar 寬度的交互作用只有並排才看得出來。</div></div>
+    <div class="fgroup">縮放極值</div>
+    <div class="frow"><div class="f">06–08</div><div class="r">日刻度的 zoom 最小／最大，以及月刻度 zoom 最小 — 後者每條 bar 都被壓到 <code>MinBarWidth</code>，是決定邊緣 resize 還堪不堪用的那個案例。</div></div>
+    <div class="fgroup">拖曳狀態</div>
+    <div class="frow"><div class="f">09–11</div><div class="r">移動／調整起點／調整長度三種進行中的樣子。平常只有手指碰到裝置才到得了這些狀態。</div></div>
+    <div class="fgroup">局部元件</div>
+    <div class="frow"><div class="f">12–14</div><div class="r">控制列（含拖曳讀數的版本）與固定左欄，單獨放大檢查排版。</div></div>
+    <div class="fgroup">尺寸與無障礙</div>
+    <div class="frow"><div class="f">15–17</div><div class="r">320dp 窄螢幕、1280dp 平板、字體放大 1.5 倍。控制列有三排，窄螢幕與大字體是它最容易爆版的兩個方向。</div></div>
+  </div>
+  <figcaption>一個限制：靜態 preview 不跑動畫，所以 grip 的探索提示在 preview 裡看不到（它有 450ms 的起始延遲）。要看它需要開 Android Studio 的 interactive preview 或直接跑 app。</figcaption>
 </section>
 
 <footer>
