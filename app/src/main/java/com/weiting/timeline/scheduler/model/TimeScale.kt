@@ -3,6 +3,7 @@ package com.weiting.timeline.scheduler.model
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.time.DayOfWeek
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -55,20 +56,22 @@ enum class TimeScale(
     }
 
     /**
-     * Where the viewport parks on launch and on "今天": a short lead-in before [now], so
-     * the current moment is always visible near the left edge.
+     * The editing granularity that matches this scale's visual grain.
      *
-     * [windowStart] would be wrong for this — at the DAY scale it is midnight, which on
-     * launch would show an empty small hours and push every task off-screen to the right.
+     * Tying snapping to the scale is what keeps the two from drifting apart: at YEAR, one
+     * tick is a month, and a 15-minute grid would be some three thousand times finer than
+     * anything on screen.
+     *
+     * YEAR snaps to a week rather than to its own tick (a month) because a month is not a
+     * fixed length, and because a week is the coarsest unit a person still reasons about
+     * when dragging a bar across a year.
      */
-    fun todayStart(now: LocalDateTime): LocalDateTime = floorToTick(
-        when (this) {
-            DAY -> now.minusHours(1)
-            WEEK -> now.minusDays(1)
-            MONTH -> now.minusDays(3)
-            YEAR -> now.minusMonths(1)
-        },
-    )
+    val defaultSnapInterval: Duration
+        get() = when (this) {
+            DAY -> Duration.ofMinutes(15)
+            WEEK, MONTH -> Duration.ofDays(1)
+            YEAR -> Duration.ofDays(7)
+        }
 
     /** Start of the window containing [time] — used for the period label. */
     fun windowStart(time: LocalDateTime): LocalDateTime = when (this) {

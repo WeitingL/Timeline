@@ -9,13 +9,22 @@ import java.time.Duration
  * Every tunable knob in one immutable value, so "configurable" means a single `copy()`
  * rather than a scattering of parameters threaded through the composable tree.
  *
- * The four knobs the spec asks for are [scale], [zoom], [snapInterval] and [rowHeight].
+ * The four knobs the brief asks for are [scale], [zoom], [snapInterval] and [rowHeight].
+ * The snap interval is derived from the scale unless [snapOverride] says otherwise.
  */
 @Immutable
 data class TimelineConfig(
     val scale: TimeScale = TimeScale.DAY,
     val zoom: Float = 1f,
-    val snapInterval: Duration = Duration.ofMinutes(15),
+    /**
+     * Explicit snap interval, or null to follow [scale].
+     *
+     * Derived is the default so that changing the scale changes the grid with nothing else
+     * to keep in sync. The override exists because the brief lists the snap interval as
+     * something that must be configurable, and a value with no way to set it would be a
+     * step back from that.
+     */
+    val snapOverride: Duration? = null,
     /**
      * Whether a drag snaps on every frame or only when the finger lifts.
      *
@@ -40,6 +49,9 @@ data class TimelineConfig(
      */
     val edgeHandleWidth: Dp = 18.dp,
 ) {
+    /** The grid in force: the override when set, otherwise the scale's own granularity. */
+    val snapInterval: Duration get() = snapOverride ?: scale.defaultSnapInterval
+
     /** Rendered width of one tick cell: the scale's baseline, scaled by zoom. */
     val tickWidth: Dp get() = scale.baseTickWidth * zoom
 
@@ -47,7 +59,7 @@ data class TimelineConfig(
         const val MIN_ZOOM = 0.4f
         const val MAX_ZOOM = 4f
 
-        /** Snap options offered in the UI. */
+        /** Manual snap options offered in the UI, alongside an automatic entry. */
         val SnapOptions: List<Duration> = listOf(
             Duration.ofMinutes(5),
             Duration.ofMinutes(15),

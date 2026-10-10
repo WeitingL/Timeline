@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -15,10 +16,14 @@ import androidx.compose.ui.unit.Dp
 import com.weiting.timeline.scheduler.model.Task
 import com.weiting.timeline.scheduler.model.TimeScale
 import com.weiting.timeline.scheduler.model.TimelineConfig
+import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.TemporalAdjusters
+import kotlin.math.abs
 import kotlin.math.roundToLong
+import kotlin.math.sign
 
 /**
  * Holder for all scheduler UI state.
@@ -49,14 +54,33 @@ class SchedulerState(
     private val minMinutes = Duration.between(origin, origin.minusYears(2)).toMinutes().toDouble()
     private val maxMinutes = Duration.between(origin, origin.plusYears(2)).toMinutes().toDouble()
 
+    private fun minutesFrom(time: LocalDateTime): Double =
+        Duration.between(origin, time).toMinutes().toDouble()
+
     /** Minutes from [origin], clamped to the scrollable range. */
     private fun clampedMinutesOf(time: LocalDateTime): Double =
-        Duration.between(origin, time).toMinutes().toDouble().coerceIn(minMinutes, maxMinutes)
+        minutesFrom(time).coerceIn(minMinutes, maxMinutes)
 
-    init {
-        // Park on launch where "今天" would, so the first frame shows the current moment
-        // rather than whatever happens to sit at the origin.
-        viewportStartMinutes = clampedMinutesOf(initialConfig.scale.todayStart(LocalDateTime.now()))
+    /**
+     * Width of the timeline area in pixels — the part that represents time, with the
+     * label column excluded. Zero until the first layout pass.
+     *
+     * Needed by two things that cannot work without knowing where the viewport ends:
+     * centring "now", and auto-scrolling when a dragged bar reaches an edge.
+     */
+    var viewportWidthPx: Float by mutableFloatStateOf(0f)
+        private set
+
+    /** True once [viewportWidthPx] is known and the launch position has been applied. */
+    var hasCentredOnLaunch: Boolean by mutableStateOf(false)
+        private set
+
+    fun onViewportWidthChanged(widthPx: Float) {
+        viewportWidthPx = widthPx
+    }
+
+    fun markCentredOnLaunch() {
+        hasCentredOnLaunch = true
     }
 
     val viewportStart: LocalDateTime get() = origin.plusMinutes(viewportStartMinutes.roundToLong())
@@ -71,8 +95,9 @@ class SchedulerState(
         config = config.copy(zoom = zoom.coerceIn(TimelineConfig.MIN_ZOOM, TimelineConfig.MAX_ZOOM))
     }
 
-    fun setSnapInterval(interval: Duration) {
-        config = config.copy(snapInterval = interval)
+    /** Null restores the scale-derived grid. */
+    fun setSnapOverride(interval: Duration?) {
+        config = config.copy(snapOverride = interval)
     }
 
     fun setSnapWhileDragging(enabled: Boolean) {
@@ -84,6 +109,24 @@ class SchedulerState(
     }
 
     // --- dragging --------------------------------------------------------------------
+
+    /**
+     * The task under the finger, for as long as the finger is down. Set on touch-down,
+     * before any movement, and cleared on release.
+     *
+     * Separate from [draft], which only exists once the gesture has committed to the
+     * horizontal axis. The two-finger period swipe runs on `PointerEventPass.Initial` and
+     * therefore sees events before a bar can consume them, so it needs this rather than
+     * consumption to know to stand down.
+     */
+    var editingTaskId: String? by mutableStateOf(null)
+        private set
+
+    /** Which zone the finger is on, for the press highlight. */
+    var editingZone: DragMode? by mutableStateOf(null)
+        private set
+
+    val isEditing: Boolean get() = editingTaskId != null
 
     /** The edit in flight, or null. Only the dragged lane reads this. */
     var draft: TaskDraft? by mutableStateOf(null)
@@ -104,6 +147,18 @@ class SchedulerState(
      * second drag would then rewind to the pre-edit time. Resolving from [tasks] here
      * makes that bug unrepresentable rather than merely absent.
      */
+    /** Touch-down on a bar. Locks the period swipe and lights the zone; moves nothing. */
+    fun beginEdit(taskId: String, zone: DragMode) {
+        editingTaskId = taskId
+        editingZone = zone
+    }
+
+    /** Release or cancel. Always paired with [beginEdit], including on the tap path. */
+    fun endEdit() {
+        editingTaskId = null
+        editingZone = null
+    }
+
     fun beginDrag(taskId: String, mode: DragMode) {
         val task = tasks.firstOrNull { it.id == taskId } ?: return
         dragAccumPx = 0f
@@ -193,6 +248,42 @@ class SchedulerState(
         dragAccumPx = 0f
     }
 
+    /**
+     * One step of edge auto-scroll, called per frame while a drag is in flight.
+     *
+     * [fingerX] is the pointer's position within the timeline area. When it sits within
+     * [thresholdPx] of either end, the viewport scrolls and the draft advances by the same
+     * amount, so the bar keeps its screen position while its time changes. Advancing only
+     * the viewport would make the bar crawl out from under the finger.
+     *
+     * Returns the pixels actually scrolled, which is zero at the clamp — and because the
+     * draft is advanced by that same return value, both stop together.
+     */
+    fun autoScrollStep(
+        fingerX: Float,
+        thresholdPx: Float,
+        maxPxPerStep: Float,
+        pxPerMinute: Float,
+    ): Float {
+        if (draft == null || viewportWidthPx <= 0f || thresholdPx <= 0f) return 0f
+
+        val overLeft = thresholdPx - fingerX
+        val overRight = fingerX - (viewportWidthPx - thresholdPx)
+        val depth = when {
+            overLeft > 0f -> -overLeft
+            overRight > 0f -> overRight
+            else -> return 0f
+        }
+        // Ramped, not constant: a fixed rate is either sluggish at the threshold edge or
+        // uncontrollable deep inside it.
+        val ramp = (abs(depth) / thresholdPx).coerceIn(0f, 1f)
+        val requested = ramp * maxPxPerStep * depth.sign
+
+        val consumed = scrollByPx(-requested, pxPerMinute)
+        if (consumed != 0f) dragBy(-consumed, pxPerMinute)
+        return -consumed
+    }
+
     /** Discards the draft; [tasks] is left exactly as it was. */
     fun cancelDrag() {
         draft = null
@@ -218,9 +309,11 @@ class SchedulerState(
         return ((before - viewportStartMinutes) * pxPerMinute).toFloat()
     }
 
-    suspend fun animateViewportTo(target: LocalDateTime) {
+    suspend fun animateViewportTo(target: LocalDateTime) =
+        animateViewportToMinutes(clampedMinutesOf(target))
+
+    private suspend fun animateViewportToMinutes(to: Double) {
         val from = viewportStartMinutes
-        val to = clampedMinutesOf(target)
         animate(
             initialValue = 0f,
             targetValue = 1f,
@@ -230,8 +323,26 @@ class SchedulerState(
         }
     }
 
-    /** Parks the viewport so the current moment sits just inside the left edge. */
-    suspend fun goToToday() = animateViewportTo(config.scale.todayStart(LocalDateTime.now()))
+    /**
+     * Viewport start that puts [time] in the middle of the timeline area.
+     *
+     * Clamped, so near the ends of the scrollable range this degrades to the closest
+     * reachable position rather than leaving the marker off-screen.
+     */
+    fun centredViewportStart(time: LocalDateTime, pxPerMinute: Float): Double {
+        if (pxPerMinute <= 0f || viewportWidthPx <= 0f) return clampedMinutesOf(time)
+        val halfViewportMinutes = viewportWidthPx / pxPerMinute / 2.0
+        return (minutesFrom(time) - halfViewportMinutes).coerceIn(minMinutes, maxMinutes)
+    }
+
+    /** Jumps, without animating, so the launch frame is already correct. */
+    fun centreOnNow(pxPerMinute: Float) {
+        viewportStartMinutes = centredViewportStart(LocalDateTime.now(), pxPerMinute)
+    }
+
+    /** Animates "now" to the middle of the timeline area. */
+    suspend fun goToToday(pxPerMinute: Float) =
+        animateViewportToMinutes(centredViewportStart(LocalDateTime.now(), pxPerMinute))
 
     /** ◀ / ▶ — moves the viewport by exactly one unit of the current scale. */
     suspend fun stepBy(direction: Int) =
@@ -242,7 +353,18 @@ class SchedulerState(
 fun rememberSchedulerState(
     tasks: List<Task> = sampleTasks(),
     config: TimelineConfig = TimelineConfig(),
-    // Origin = start of today, so positions stay small and precise around the data we care
-    // about, and "today" sits at exactly 0. Overridable so previews can pin a date.
-    origin: LocalDateTime = LocalDate.now().atStartOfDay(),
+    /**
+     * Origin = this week's Monday at midnight.
+     *
+     * Snapping is anchored to the origin, and the derived grids are 15 minutes, one day
+     * and one week. All three divide evenly into a week that starts at a Monday midnight,
+     * so every granularity lines up with the tick lines and with the others. Anchoring to
+     * today's midnight instead would put the weekly grid on whatever weekday today
+     * happens to be.
+     *
+     * Overridable so previews and tests can pin a date.
+     */
+    origin: LocalDateTime = LocalDate.now()
+        .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        .atStartOfDay(),
 ): SchedulerState = remember { SchedulerState(origin, tasks, config) }

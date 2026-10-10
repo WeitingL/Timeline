@@ -1,11 +1,14 @@
 package com.weiting.timeline.scheduler
 
 import com.weiting.timeline.scheduler.model.Task
+import com.weiting.timeline.scheduler.model.TimeScale
 import com.weiting.timeline.scheduler.model.TimelineConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
+import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDateTime
 
@@ -17,7 +20,8 @@ import java.time.LocalDateTime
  */
 class TaskDragTest {
 
-    private val origin: LocalDateTime = LocalDateTime.of(2026, 10, 10, 0, 0)
+    /** A Monday, matching production: the derived grids all divide into a Monday week. */
+    private val origin: LocalDateTime = LocalDateTime.of(2026, 10, 12, 0, 0)
 
     /** 2 px per minute, so one 15-minute grid cell is 30 px of finger travel. */
     private val pxPerMinute = 2f
@@ -30,14 +34,16 @@ class TaskDragTest {
     )
 
     private fun state(
+        scale: TimeScale = TimeScale.DAY,
         snapWhileDragging: Boolean = true,
-        snapInterval: Duration = Duration.ofMinutes(15),
+        snapOverride: Duration? = null,
         minTaskDuration: Duration = Duration.ofMinutes(15),
     ) = SchedulerState(
         origin = origin,
         initialTasks = listOf(task),
         initialConfig = TimelineConfig(
-            snapInterval = snapInterval,
+            scale = scale,
+            snapOverride = snapOverride,
             snapWhileDragging = snapWhileDragging,
             minTaskDuration = minTaskDuration,
         ),
@@ -145,7 +151,7 @@ class TaskDragTest {
     fun `the minimum duration is independent of the snap interval`() {
         // Switching snap to one day must not inflate a short task.
         val s = state(
-            snapInterval = Duration.ofDays(1),
+            snapOverride = Duration.ofDays(1),
             minTaskDuration = Duration.ofMinutes(15),
         )
         s.beginDrag(task.id, DragMode.ResizeEnd)
@@ -264,6 +270,254 @@ class TaskDragTest {
         s.commitDrag()
 
         assertEquals(origin.plusHours(10), s.tasks[0].start)
+    }
+
+    // --- scale-derived snapping ------------------------------------------------------
+
+    @Test
+    fun `DAY snaps to a quarter hour`() {
+        val s = state(scale = TimeScale.DAY)
+        s.beginDrag(task.id, DragMode.Move)
+        s.dragBy(2f * 37f, 2f) // +37 min -> nearest quarter hour is +30
+        s.commitDrag()
+
+        assertEquals(origin.plusHours(9).plusMinutes(30), s.tasks[0].start)
+    }
+
+    @Test
+    fun `WEEK and MONTH snap to midnight`() {
+        for (scale in listOf(TimeScale.WEEK, TimeScale.MONTH)) {
+            val s = state(scale = scale)
+            s.beginDrag(task.id, DragMode.Move)
+            s.dragBy(2f * 60f * 20f, 2f) // +20 h
+            s.commitDrag()
+
+            val start = s.tasks[0].start
+            assertEquals("$scale should land at midnight", 0, start.hour)
+            assertEquals("$scale should land at midnight", 0, start.minute)
+        }
+    }
+
+    @Test
+    fun `YEAR snaps to a Monday midnight`() {
+        // The case that would fail silently if the origin were today's midnight instead
+        // of this week's Monday: a seven-day grid anchored to a Wednesday lands on
+        // Wednesdays.
+        val s = state(scale = TimeScale.YEAR)
+        s.beginDrag(task.id, DragMode.Move)
+        s.dragBy(2f * 60f * 24f * 10f, 2f) // +10 days
+        s.commitDrag()
+
+        val start = s.tasks[0].start
+        assertEquals(DayOfWeek.MONDAY, start.dayOfWeek)
+        assertEquals(0, start.hour)
+        assertEquals(0, start.minute)
+    }
+
+    @Test
+    fun `an override replaces the derived interval`() {
+        val s = state(scale = TimeScale.YEAR, snapOverride = Duration.ofMinutes(15))
+        assertEquals(Duration.ofMinutes(15), s.config.snapInterval)
+
+        s.setSnapOverride(null)
+        assertEquals(Duration.ofDays(7), s.config.snapInterval)
+    }
+
+    @Test
+    fun `changing the scale changes the grid with nothing else to set`() {
+        val s = state(scale = TimeScale.DAY)
+        assertEquals(Duration.ofMinutes(15), s.config.snapInterval)
+        s.setScale(TimeScale.WEEK)
+        assertEquals(Duration.ofDays(1), s.config.snapInterval)
+        s.setScale(TimeScale.YEAR)
+        assertEquals(Duration.ofDays(7), s.config.snapInterval)
+    }
+
+    @Test
+    fun `the minimum duration is unaffected by the scale`() {
+        val s = state(scale = TimeScale.YEAR, minTaskDuration = Duration.ofMinutes(15))
+        s.beginDrag(task.id, DragMode.ResizeEnd)
+        s.dragBy(-10_000f, 2f)
+        s.commitDrag()
+
+        assertEquals(Duration.ofMinutes(15), s.tasks[0].duration)
+    }
+
+    // --- the edit bracket ------------------------------------------------------------
+
+    @Test
+    fun `beginEdit marks the task before anything moves`() {
+        val s = state()
+        s.beginEdit(task.id, DragMode.ResizeStart)
+
+        assertEquals(task.id, s.editingTaskId)
+        assertEquals(DragMode.ResizeStart, s.editingZone)
+        assertTrue(s.isEditing)
+        assertNull("no draft until the gesture commits to an axis", s.draft)
+        assertEquals(task.start, s.tasks[0].start)
+    }
+
+    @Test
+    fun `a press with no movement leaves nothing behind`() {
+        val s = state()
+        s.beginEdit(task.id, DragMode.Move)
+        s.endEdit()
+
+        assertNull(s.editingTaskId)
+        assertNull(s.editingZone)
+        assertNull(s.draft)
+        assertEquals(task.start, s.tasks[0].start)
+        assertEquals(task.duration, s.tasks[0].duration)
+    }
+
+    @Test
+    fun `endEdit after a committed drag keeps the edit`() {
+        val s = state()
+        s.beginEdit(task.id, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
+        s.dragBy(60f, 2f)
+        s.commitDrag()
+        s.endEdit()
+
+        assertNull(s.editingTaskId)
+        assertEquals(origin.plusHours(9).plusMinutes(30), s.tasks[0].start)
+    }
+
+    // --- auto-scroll -----------------------------------------------------------------
+
+    @Test
+    fun `auto-scroll moves the viewport and the draft by the same amount`() {
+        // Snapping off, so the draft is the raw tracked position. This is the invariant
+        // that keeps the bar under the finger: scroll the viewport by n minutes and the
+        // bar's time must advance by n, or it crawls away from the finger.
+        val s = state(snapWhileDragging = false)
+        s.onViewportWidthChanged(1000f)
+        s.beginEdit(task.id, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
+
+        val viewportBefore = s.viewportStartMinutes
+        val draftBefore = s.draft!!.start
+
+        // Finger hard against the right edge.
+        val scrolled = s.autoScrollStep(
+            fingerX = 1000f,
+            thresholdPx = 100f,
+            maxPxPerStep = 20f,
+            pxPerMinute = 2f,
+        )
+
+        assertTrue("should have scrolled", scrolled != 0f)
+        val viewportDelta = s.viewportStartMinutes - viewportBefore
+        val draftDelta = Duration.between(draftBefore, s.draft!!.start).toMinutes().toDouble()
+        assertEquals(viewportDelta, draftDelta, 0.001)
+    }
+
+    @Test
+    fun `auto-scroll with live snapping drifts by less than one grid step`() {
+        // With snapping on the bar steps in grid units rather than tracking continuously,
+        // so the two cannot be equal. What must hold is that the gap never accumulates:
+        // the draft is derived from the raw travel, and only its presentation is snapped.
+        val s = state(snapWhileDragging = true)
+        s.onViewportWidthChanged(1000f)
+        s.beginEdit(task.id, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
+
+        val viewportBefore = s.viewportStartMinutes
+        val draftBefore = s.draft!!.start
+        repeat(40) { s.autoScrollStep(1000f, 100f, 20f, 2f) }
+
+        val viewportDelta = s.viewportStartMinutes - viewportBefore
+        val draftDelta = Duration.between(draftBefore, s.draft!!.start).toMinutes().toDouble()
+        val gridMinutes = s.config.snapInterval.toMinutes().toDouble()
+
+        assertTrue("viewport should have moved a long way", viewportDelta > 100.0)
+        assertTrue(
+            "drift was ${'$'}{abs(viewportDelta - draftDelta)} min, grid is $gridMinutes",
+            abs(viewportDelta - draftDelta) < gridMinutes,
+        )
+    }
+
+    @Test
+    fun `auto-scroll stops the viewport and the draft together at the clamp`() {
+        val s = state(snapWhileDragging = false)
+        s.onViewportWidthChanged(1000f)
+        s.beginEdit(task.id, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
+
+        // Drive it into the backward clamp. The range is origin +/- 2 years, so at
+        // 2 px/min this needs well over a million minutes of travel.
+        repeat(2_000) { s.autoScrollStep(0f, 100f, 4_000f, 2f) }
+        val viewportAtClamp = s.viewportStartMinutes
+        val draftAtClamp = s.draft!!.start
+
+        val floor = Duration.between(origin, origin.minusYears(2)).toMinutes().toDouble()
+        assertEquals("should be sitting on the clamp", floor, viewportAtClamp, 0.001)
+
+        // Nothing further moves, and neither one drifts past the other.
+        assertEquals(0f, s.autoScrollStep(0f, 100f, 4_000f, 2f), 0.001f)
+        assertEquals(viewportAtClamp, s.viewportStartMinutes, 0.001)
+        assertEquals(draftAtClamp, s.draft!!.start)
+    }
+
+    @Test
+    fun `auto-scroll does nothing away from the edges`() {
+        val s = state()
+        s.onViewportWidthChanged(1000f)
+        s.beginEdit(task.id, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
+
+        val before = s.viewportStartMinutes
+        val scrolled = s.autoScrollStep(500f, 100f, 20f, 2f)
+
+        assertEquals(0f, scrolled, 0.001f)
+        assertEquals(before, s.viewportStartMinutes, 0.001)
+    }
+
+    @Test
+    fun `auto-scroll does nothing without a draft`() {
+        val s = state()
+        s.onViewportWidthChanged(1000f)
+        val before = s.viewportStartMinutes
+
+        assertEquals(0f, s.autoScrollStep(1000f, 100f, 20f, 2f), 0.001f)
+        assertEquals(before, s.viewportStartMinutes, 0.001)
+    }
+
+    // --- centring --------------------------------------------------------------------
+
+    @Test
+    fun `centring puts the target in the middle of the timeline area`() {
+        val s = state()
+        s.onViewportWidthChanged(1200f)
+        val target = origin.plusDays(2).plusHours(14)
+
+        val start = s.centredViewportStart(target, pxPerMinute = 2f)
+        val targetMinutes = Duration.between(origin, target).toMinutes().toDouble()
+
+        // half of 1200px at 2px/min is 300 minutes
+        assertEquals(targetMinutes - 300.0, start, 0.001)
+    }
+
+    @Test
+    fun `centring degrades rather than leaving the marker off-screen`() {
+        val s = state()
+        s.onViewportWidthChanged(1200f)
+        // Far past the clamp at origin - 2 years.
+        val start = s.centredViewportStart(origin.minusYears(5), pxPerMinute = 2f)
+        val floor = Duration.between(origin, origin.minusYears(2)).toMinutes().toDouble()
+
+        assertEquals(floor, start, 0.001)
+    }
+
+    @Test
+    fun `centring with no width yet falls back to the target itself`() {
+        val s = state()
+        val target = origin.plusHours(9)
+        assertEquals(
+            Duration.between(origin, target).toMinutes().toDouble(),
+            s.centredViewportStart(target, pxPerMinute = 2f),
+            0.001,
+        )
     }
 
     // --- hit testing -----------------------------------------------------------------

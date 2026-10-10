@@ -17,10 +17,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.launch
 import com.weiting.timeline.scheduler.ui.SchedulerControls
@@ -76,6 +78,15 @@ fun SchedulerScreen(
     val verticalScroll = rememberScrollState()
     val scope = rememberCoroutineScope()
 
+    // The launch position needs the viewport width, which only exists after the first
+    // layout pass, so it cannot be set in the state's constructor.
+    LaunchedEffect(state.viewportWidthPx, pxPerMinute) {
+        if (!state.hasCentredOnLaunch && state.viewportWidthPx > 0f && pxPerMinute > 0f) {
+            state.centreOnNow(pxPerMinute)
+            state.markCentredOnLaunch()
+        }
+    }
+
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(
             Modifier
@@ -84,11 +95,13 @@ fun SchedulerScreen(
                 // modifier watches the Initial pass, so it claims the gesture ahead of
                 // both the bars and the scroller. Suppressed mid-drag so a second finger
                 // landing during an edit cannot hijack it.
-                .twoFingerHorizontalSwipe(enabled = { state.draft == null }) { direction ->
+                // editingTaskId, not draft: the lock has to hold from touch-down, and a
+                // draft only exists once the gesture has committed to the horizontal axis.
+                .twoFingerHorizontalSwipe(enabled = { !state.isEditing }) { direction ->
                     scope.launch { state.stepBy(direction) }
                 },
         ) {
-            SchedulerControls(state)
+            SchedulerControls(state, pxPerMinute)
             HorizontalDivider()
 
             Row(Modifier.fillMaxWidth().height(config.headerHeight)) {
@@ -101,7 +114,11 @@ fun SchedulerScreen(
                         .weight(1f)
                         .fillMaxSize()
                         .clipToBounds()
-                        .scrollable(horizontalScroll, Orientation.Horizontal),
+                        .scrollable(
+                            state = horizontalScroll,
+                            orientation = Orientation.Horizontal,
+                            enabled = !state.isEditing,
+                        ),
                 )
             }
 
@@ -117,8 +134,22 @@ fun SchedulerScreen(
                     axis = axis,
                     modifier = Modifier
                         .weight(1f)
+                        // The timeline area's width, with the label column excluded: this
+                        // is the span that represents time, so it is what "centre" and the
+                        // edge threshold are measured against.
+                        .onSizeChanged { state.onViewportWidthChanged(it.width.toFloat()) }
                         .clipToBounds()
-                        .scrollable(horizontalScroll, Orientation.Horizontal),
+                        // Declarative half of the edit lock. Consuming the pointer events
+                        // is the other half, and on its own it proved too subtle to rely
+                        // on: the bar and this modifier cross the same touch slop on the
+                        // same event, so a single unconsumed change is enough to hand the
+                        // pan away for the rest of the gesture. Disabling it outright from
+                        // touch-down removes the race instead of trying to win it.
+                        .scrollable(
+                            state = horizontalScroll,
+                            orientation = Orientation.Horizontal,
+                            enabled = !state.isEditing,
+                        ),
                 )
             }
         }

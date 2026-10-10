@@ -47,6 +47,7 @@ import java.util.Locale
 @Composable
 fun SchedulerControls(
     state: SchedulerState,
+    pxPerMinute: Float,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -91,7 +92,7 @@ fun SchedulerControls(
             }
             Spacer(Modifier.weight(1f))
             TextButton(onClick = { scope.launch { state.stepBy(-1) } }) { Text("◀") }
-            TextButton(onClick = { scope.launch { state.goToToday() } }) { Text("今天") }
+            TextButton(onClick = { scope.launch { state.goToToday(pxPerMinute) } }) { Text("今天") }
             TextButton(onClick = { scope.launch { state.stepBy(1) } }) { Text("▶") }
         }
 
@@ -131,11 +132,18 @@ fun SchedulerControls(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = 3.dp),
             )
+            // "自動" is the default: the grid follows the scale. The manual entries are
+            // the override the brief asks to remain configurable.
+            MiniChip(
+                text = "自動 (${TimelineConfig.snapLabel(config.scale.defaultSnapInterval)})",
+                selected = config.snapOverride == null,
+                onClick = { state.setSnapOverride(null) },
+            )
             TimelineConfig.SnapOptions.forEach { interval ->
                 MiniChip(
                     text = TimelineConfig.snapLabel(interval),
-                    selected = config.snapInterval == interval,
-                    onClick = { state.setSnapInterval(interval) },
+                    selected = config.snapOverride == interval,
+                    onClick = { state.setSnapOverride(interval) },
                 )
             }
             Spacer(Modifier.width(6.dp))

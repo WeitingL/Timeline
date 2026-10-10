@@ -7,8 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -26,17 +24,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +52,7 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -66,6 +66,23 @@ private val MinBarWidth = 52.dp
 private val MinGripWidth = 34.dp
 
 private val BarVerticalInset = 9.dp
+
+/**
+ * How close to a viewport edge a dragged bar has to get before the axis starts scrolling.
+ *
+ * In dp, so it is a constant *distance* and a varying *duration*: about 45 minutes at
+ * DAY/zoom 1 and about three weeks at YEAR/min zoom. That is the right way round — the
+ * threshold describes a physical reach near the screen edge, and a finger does not scale
+ * with the screen the way a fraction-of-viewport threshold would.
+ */
+private val EdgeAutoScrollThreshold = 48.dp
+
+/** Edit hatching: wide enough to read as stripes, fine enough not to hide the title. */
+private val StripeSpacing = 9.dp
+private val StripeWidth = 2.5.dp
+
+/** Ceiling for one frame of auto-scroll, reached only at the very edge. */
+private const val AutoScrollMaxPxPerFrame = 14f
 
 /** Discovery hint timing: a brief settle, then a staggered ripple down the lanes. */
 private const val HintPulses = 3
@@ -134,7 +151,7 @@ private fun TaskLane(
 
     val start = draft?.start ?: task.start
     val duration = draft?.duration ?: task.duration
-    val dragging = draft != null
+    val editing = state.editingTaskId == task.id
 
     val minBarPx = with(density) { MinBarWidth.toPx() }
     val barWidthPx = axis.widthOf(duration).coerceAtLeast(minBarPx)
@@ -145,11 +162,24 @@ private fun TaskLane(
     val handleWidth = with(density) { handlePx.toDp() }
     val pxPerMinute = axis.pxPerMinute
     val showGrips = barWidth >= MinGripWidth
+    val edgeThresholdPx = with(density) { EdgeAutoScrollThreshold.toPx() }
+    // The pointer position arrives relative to the bar; auto-scroll needs it relative to
+    // the timeline area, and the bar's own left edge is exactly that offset. It moves with
+    // the bar, so it has to be read fresh each frame rather than captured at composition.
+    val metrics = rememberUpdatedState(
+        LaneMetrics(
+            barWidthPx = barWidthPx,
+            handlePx = handlePx,
+            laneOriginX = axis.xOf(start, state.viewportStartMinutes),
+            pxPerMinute = pxPerMinute,
+            edgeThresholdPx = edgeThresholdPx,
+        ),
+    )
 
-    // Which zone the finger is on right now, for the press reaction. Falls back to the
-    // in-flight drag so the highlight survives past the touch-slop handover.
-    var pressedZone by remember(task.id) { mutableStateOf<DragMode?>(null) }
-    val activeZone = draft?.mode ?: pressedZone
+    // One source of truth now that press and drag share a gesture: the state is set at
+    // touch-down and cleared on release, so the highlight no longer needs the
+    // `draft?.mode ?: pressedZone` fallback that bridged two separate handlers.
+    val activeZone = if (state.editingTaskId == task.id) state.editingZone else null
 
     // A short, finite discovery hint: the grips breathe a few times on first appearance
     // and then stop. An infinite transition would be a permanent distraction, and a
@@ -179,37 +209,90 @@ private fun TaskLane(
                 .height(config.rowHeight - BarVerticalInset * 2)
                 .clip(BarShape)
                 .background(barColor(task.colorIndex))
+                .then(if (editing) Modifier.editingStripes() else Modifier)
                 .then(
-                    if (dragging) {
-                        Modifier.border(1.5.dp, Color.White.copy(alpha = 0.9f), BarShape)
+                    if (editing) {
+                        Modifier.border(2.dp, Color.White.copy(alpha = 0.95f), BarShape)
                     } else {
                         Modifier
                     },
                 )
-                // Observation only, and it consumes nothing: it reports which zone the
-                // finger landed on so the bar can react before the drag even starts.
-                .pointerInput(task.id, barWidthPx, handlePx) {
+                // Keyed on the task id alone: every value that moves during a gesture
+                // is read through `metrics`, so the block is never restarted mid-touch.
+                .pointerInput(task.id) {
                     awaitEachGesture {
+                        // Touch-down: the edit begins here, before any movement. This is
+                        // what stops the two-finger period swipe, which runs on the
+                        // Initial pass and so cannot rely on consumption, and what
+                        // disables the ancestor horizontal scroller.
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        pressedZone = hitTestBar(down.position.x, barWidthPx, handlePx)
-                        waitForUpOrCancellation()
-                        pressedZone = null
-                    }
-                }
-                .pointerInput(task.id, pxPerMinute, barWidthPx, handlePx) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { offset ->
-                            // task.id, never the Task: a stale captured Task would rewind
-                            // the edit. See SchedulerState.beginDrag.
-                            state.beginDrag(task.id, hitTestBar(offset.x, barWidthPx, handlePx))
-                        },
-                        onDragEnd = { state.commitDrag() },
-                        onDragCancel = { state.cancelDrag() },
-                    ) { change, dragAmount ->
-                        // Consuming the change is what keeps the ancestor
-                        // Modifier.scrollable from panning the timeline at the same time.
-                        change.consume()
-                        state.dragBy(dragAmount, pxPerMinute)
+                        val grabbed = metrics.value
+                        val zone = hitTestBar(down.position.x, grabbed.barWidthPx, grabbed.handlePx)
+                        state.beginEdit(task.id, zone)
+                        try {
+                            // Buffer. Accumulate until one axis crosses the platform touch
+                            // slop, then commit to that axis for the rest of the gesture so
+                            // a diagonal drag cannot flip between editing and scrolling.
+                            var dx = 0f
+                            var dy = 0f
+                            var horizontal: Boolean? = null
+                            while (horizontal == null) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id }
+                                    ?: return@awaitEachGesture
+                                if (!change.pressed) return@awaitEachGesture // a tap
+                                dx += change.positionChange().x
+                                dy += change.positionChange().y
+                                horizontal = when {
+                                    abs(dx) >= viewConfiguration.touchSlop -> {
+                                        // Consume the crossing event itself, not only the
+                                        // ones after it. The ancestor scrollable measures
+                                        // the same slop against the same accumulated x, so
+                                        // it crosses on this very event; leaving this one
+                                        // unconsumed handed it the gesture and it panned
+                                        // for the rest of the drag.
+                                        change.consume()
+                                        true
+                                    }
+                                    abs(dy) >= viewConfiguration.touchSlop -> false
+                                    else -> null
+                                }
+                            }
+                            // Vertical means nothing to a bar, so hand the gesture over by
+                            // never consuming: the ancestor verticalScroll picks it up.
+                            if (!horizontal) return@awaitEachGesture
+
+                            state.beginDrag(task.id, zone)
+                            // Spend the travel used up crossing the buffer, so the bar does
+                            // not start one slop behind the finger.
+                            state.dragBy(dx, metrics.value.pxPerMinute)
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                // Read the movement BEFORE consuming. positionChange()
+                                // reports zero on a consumed change (see
+                                // PointerChangeSemanticsTest), so consuming first made the
+                                // drag advance by the slop travel alone — one snap step —
+                                // and then sit still however far the finger went.
+                                val deltaX = change.positionChange().x
+                                change.consume()
+                                if (!change.pressed) break
+                                val m = metrics.value
+                                state.dragBy(deltaX, m.pxPerMinute)
+                                // Edge auto-scroll: with panning locked, this is the only
+                                // way to move a bar out of the current window.
+                                state.autoScrollStep(
+                                    fingerX = change.position.x + m.laneOriginX,
+                                    thresholdPx = m.edgeThresholdPx,
+                                    maxPxPerStep = AutoScrollMaxPxPerFrame,
+                                    pxPerMinute = m.pxPerMinute,
+                                )
+                            }
+                            state.commitDrag()
+                        } finally {
+                            state.endEdit()
+                        }
                     }
                 },
             contentAlignment = Alignment.CenterStart,
@@ -237,14 +320,66 @@ private fun TaskLane(
             if (showGrips) {
                 Grip(
                     modifier = Modifier.align(Alignment.CenterStart).padding(start = 4.dp),
-                    emphasis = if (activeZone == DragMode.ResizeStart) 1f else hint.value,
+                    emphasis = when {
+                        activeZone == DragMode.ResizeStart -> 1f
+                        editing -> 0.8f
+                        else -> hint.value
+                    },
                 )
                 Grip(
                     modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp),
-                    emphasis = if (activeZone == DragMode.ResizeEnd) 1f else hint.value,
+                    emphasis = when {
+                        activeZone == DragMode.ResizeEnd -> 1f
+                        editing -> 0.8f
+                        else -> hint.value
+                    },
                 )
             }
         }
+    }
+}
+
+/**
+ * Everything the gesture reads that changes while the gesture is running.
+ *
+ * It exists so the `pointerInput` block can be keyed on the task id alone. Keying it on
+ * these values instead restarts the suspend block when any of them changes — and
+ * `barWidthPx` changes on the very first frame of a resize, which cancelled the gesture
+ * that was setting it.
+ */
+private data class LaneMetrics(
+    val barWidthPx: Float,
+    val handlePx: Float,
+    val laneOriginX: Float,
+    val pxPerMinute: Float,
+    val edgeThresholdPx: Float,
+)
+
+/**
+ * Diagonal hatching for a bar under edit.
+ *
+ * A stripe pattern rather than a colour change: the bar's colour is its identity in the
+ * chart, so repainting it would read as "a different task" rather than "this task is being
+ * edited". Hatching reads as a state over the top, and it survives the bar being any of
+ * the six palette colours.
+ *
+ * Drawn after `clip(BarShape)` in the chain, so it is clipped to the rounded corners.
+ */
+private fun Modifier.editingStripes(): Modifier = drawWithContent {
+    drawContent()
+    val spacing = StripeSpacing.toPx()
+    val stroke = StripeWidth.toPx()
+    val h = size.height
+    // 45 degrees: shifting the start by the height gives a constant-slope diagonal.
+    var x = -h
+    while (x < size.width + h) {
+        drawLine(
+            color = Color.White.copy(alpha = 0.32f),
+            start = Offset(x, h),
+            end = Offset(x + h, 0f),
+            strokeWidth = stroke,
+        )
+        x += spacing
     }
 }
 

@@ -107,39 +107,51 @@ private fun PreviewDraggingEnd() = Framed {
 
 // ---------------------------------------------------------------- pieces
 
-@Preview(name = "12 控制列", showBackground = true, widthDp = 400)
+@Preview(name = "14 控制列", showBackground = true, widthDp = 400)
 @Composable
 private fun PreviewControls() = Framed {
-    SchedulerControls(previewState(TimeScale.DAY))
+    SchedulerControls(previewState(TimeScale.DAY), pxPerMinute = 2f)
 }
 
-@Preview(name = "13 控制列 · 拖曳讀數", showBackground = true, widthDp = 400)
+@Preview(name = "15 控制列 · 拖曳讀數", showBackground = true, widthDp = 400)
 @Composable
 private fun PreviewControlsDragging() = Framed {
-    SchedulerControls(previewState(TimeScale.DAY, drag = DragMode.ResizeEnd))
+    SchedulerControls(previewState(TimeScale.DAY, drag = DragMode.ResizeEnd), pxPerMinute = 2f)
 }
 
-@Preview(name = "14 左欄", showBackground = true, widthDp = 160)
+@Preview(name = "16 左欄", showBackground = true, widthDp = 160)
 @Composable
 private fun PreviewLabelColumn() = Framed {
     TaskLabelColumn(previewState(TimeScale.DAY))
 }
 
+@Preview(name = "12 編輯中 · 週（吸附=天）", showBackground = true, device = PHONE)
+@Composable
+private fun PreviewEditingWeek() = Framed {
+    SchedulerScreen(state = previewState(TimeScale.WEEK, drag = DragMode.ResizeEnd))
+}
+
+@Preview(name = "13 編輯中 · 年（吸附=週）", showBackground = true, device = PHONE)
+@Composable
+private fun PreviewEditingYear() = Framed {
+    SchedulerScreen(state = previewState(TimeScale.YEAR, drag = DragMode.Move))
+}
+
 // ---------------------------------------------------------------- form factors
 
-@Preview(name = "15 窄螢幕 320dp", showBackground = true, widthDp = 320, heightDp = 640)
+@Preview(name = "17 窄螢幕 320dp", showBackground = true, widthDp = 320, heightDp = 640)
 @Composable
 private fun PreviewNarrow() = Framed {
     SchedulerScreen(state = previewState(TimeScale.DAY))
 }
 
-@Preview(name = "16 平板", showBackground = true, device = TABLET)
+@Preview(name = "18 平板", showBackground = true, device = TABLET)
 @Composable
 private fun PreviewTablet() = Framed {
     SchedulerScreen(state = previewState(TimeScale.WEEK))
 }
 
-@Preview(name = "17 字體放大 1.5x", showBackground = true, device = PHONE, fontScale = 1.5f)
+@Preview(name = "19 字體放大 1.5x", showBackground = true, device = PHONE, fontScale = 1.5f)
 @Composable
 private fun PreviewLargeFont() = Framed {
     SchedulerScreen(state = previewState(TimeScale.DAY))
@@ -175,6 +187,7 @@ private fun previewState(
     remember(state, drag) {
         if (drag != null) {
             // "設計稿" is the 3-hour task, wide enough to show all three zones.
+            state.beginEdit("t2", drag)
             state.beginDrag("t2", drag)
             state.dragBy(0f, 1f)
         }
