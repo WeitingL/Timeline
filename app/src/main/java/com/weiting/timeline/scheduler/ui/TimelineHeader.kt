@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
@@ -108,7 +109,7 @@ private fun DrawScope.drawTickLabel(
 private fun DrawScope.drawNowMarker(
     axis: TimeAxis,
     viewportStartMinutes: Double,
-    color: androidx.compose.ui.graphics.Color,
+    color: Color,
 ) {
     val x = axis.xOf(LocalDateTime.now(), viewportStartMinutes)
     if (x < 0f || x > size.width) return
