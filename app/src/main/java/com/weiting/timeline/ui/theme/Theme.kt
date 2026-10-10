@@ -36,8 +36,10 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun TimelineTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // Off by default: the Gantt bars use a fixed palette, and letting Material re-tint the
+    // surrounding surfaces from the device wallpaper would make the chart's contrast
+    // unpredictable from one device to the next.
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
