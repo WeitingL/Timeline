@@ -1,6 +1,6 @@
 # Spec 001 — Task bar drag, resize, and snap
 
-- **Status:** draft
+- **Status:** implemented 2026-10-10
 - **Date:** 2026-10-10
 - **Scope:** `app/src/main/java/com/weiting/timeline/scheduler/`
 
@@ -238,3 +238,56 @@ elevation or a brighter border, plus visible handle grips on the two edges.
 7. **Overlap.** Two tasks in different rows may overlap in time, which is fine. Is there
    any rule about tasks *not* being allowed to overlap, or is the timeline purely a
    display with no scheduling constraints?
+
+
+---
+
+## Resolution
+
+Implemented. 28 unit tests in `app/src/test/java/com/weiting/timeline/scheduler/`
+(`TimeAxisTest`, `TaskDragTest`) encode the acceptance criteria above; all pass on the
+plain JVM, with no device or Compose test rule needed.
+
+How each question was answered:
+
+1. **Snap live, or on release?** → **Both, live by default.**
+   `TimelineConfig.snapWhileDragging` toggles it, and there is a chip in the control bar
+   so the difference can be felt side by side. Live is the default because the brief asks
+   for snapping and a reviewer needs to *see* it happen. Either way the commit snaps
+   unconditionally, so both modes land on the same grid.
+
+2. **Narrow-bar conflict.** → **Resize stays available at every width.**
+   The handle is `min(edgeHandleWidth, barWidth / 3)`, so the middle third is always a
+   move zone no matter how narrow the bar gets. `MinBarWidth` rose from `10.dp` to
+   `52.dp`, which is wide enough for two 18dp handles plus a grabbable middle.
+
+3. **Minimum duration.** → **Its own config field, independent of the snap interval.**
+   `TimelineConfig.minTaskDuration`, default 15 minutes. Deriving it from `snapInterval`
+   would have meant that switching snap to "1 day" silently inflated every short task.
+   There is a test for exactly that.
+
+4. **Vertical dragging.** → **Out of scope, unchanged.**
+   Rows still carry no independent meaning, so reordering would encode nothing. Worth
+   revisiting only if a row comes to represent a person or a resource.
+
+5. **Edge auto-scroll.** → **Not implemented.**
+   Still the most defensible next addition. Dragging a bar toward the viewport edge
+   currently just runs out of room.
+
+6. **Bounds.** → **Tasks are not clamped.**
+   Only the viewport clamps, at `origin ± 2 years`. A task dragged outside that window
+   would become unreachable, but reaching it requires roughly two years of dragging, so
+   the guard would cost more than it saves.
+
+7. **Overlap.** → **Purely a display.**
+   No scheduling constraints are enforced. Tasks may overlap freely, within a row or
+   across rows.
+
+### Still open
+
+- The `Modifier.scrollable` delta sign is still unverified on hardware (see the note in
+  commit `5ebe2b0`). The drag direction shares no code with it, so a wrong scroll sign
+  would not affect dragging.
+- Whether the gesture correctly beats the ancestor `Modifier.scrollable` depends on
+  child-first pointer dispatch and `change.consume()`. The logic is unit-tested, but the
+  dispatch itself can only be confirmed by touching a real screen.
