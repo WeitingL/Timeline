@@ -210,6 +210,7 @@
   .frow .f{font-family:var(--mono); font-size:12.5px; font-weight:600}
   .frow .r{font-size:13px; color:var(--ink-2)}
   @media (max-width:560px){ .frow{grid-template-columns:1fr} }
+  .editframe{fill:none; stroke:#fff; stroke-opacity:.95; stroke-width:2}
   .buffer{fill:var(--accent); fill-opacity:.1; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3}
   .wash{fill:#fff; opacity:.24}
   .washsoft{fill:#fff; opacity:.13}
@@ -239,9 +240,9 @@
 <header>
   <div class="top">
     <div style="flex:1; min-width:0">
-      <div class="eyebrow"><span>Spec 003</span><span class="tickrule"></span><span>基準 v0.2.0</span></div>
+      <div class="eyebrow"><span>Spec 003</span><span class="tickrule"></span><span>已實作 · 51 項測試</span></div>
       <h1>編輯鎖定<br>依刻度吸附 · 置中於現在</h1>
-      <p class="standfirst">修正水平平移與編輯互相干擾的方式。四項改動：吸附跟著刻度走、一次觸碰就是一段完整的編輯、編輯時拖到邊緣會讓出空間、紅線落在畫面正中。六項設計決定已確認。</p>
+      <p class="standfirst">修正水平平移與編輯互相干擾的方式。四項改動：吸附跟著刻度走、一次觸碰就是一段完整的編輯、編輯時拖到邊緣會讓出空間、紅線落在畫面正中。已實作並通過實機驗證；過程中推翻了一個先前的推論、修掉兩個實機才現形的缺陷。</p>
       <p style="margin:14px 0 0"><a href="architecture.html">框架總覽</a> · <a href="gesture-layer.html">手勢層</a></p>
     </div>
     <button id="tt" type="button">主題</button>
@@ -366,42 +367,44 @@
 </section>
 
 <section>
-  <h2><span class="num">03</span>目前的鎖定只蓋住觸碰的一部分</h2>
-  <p class="lede">你要的是「按下到放開全程都是編輯狀態」。目前的鎖定從<strong>超過 touch slop</strong> 才開始。</p>
+  <h2><span class="num">03</span>鎖定為什麼漏了</h2>
+  <p class="lede">實作前的診斷：鎖定從<strong>超過 touch slop</strong> 才開始，按下到跨越之間那段沒人聲明。但真正的漏洞比這更窄 — 窄到只有一個事件。</p>
   <figure class="frame"><div class="scroller">
-  <svg viewBox="0 0 900 290" role="img" aria-label="目前與提案的鎖定覆蓋範圍">
-    <text x="20" y="26" class="tbad">✗ 現在 — 兩個各自獨立的 pointerInput</text>
-    <line x1="150" y1="78" x2="840" y2="78" class="axis" marker-end="url(#arr)"/>
-    <text x="150" y="100" class="lbl">按下</text>
-    <text x="370" y="100" class="lbl">超過 SLOP</text>
-    <text x="810" y="100" class="lbl" text-anchor="end">放開</text>
-    <g class="tick"><line x1="160" y1="72" x2="160" y2="84"/><line x1="380" y1="72" x2="380" y2="84"/><line x1="820" y1="72" x2="820" y2="84"/></g>
+  <svg viewBox="0 0 900 300" role="img" aria-label="slop 跨越事件未被消耗導致平移被父層接手">
+    <text x="20" y="26" class="tbad">✗ 第一版實作 — 跨越的那一個事件沒有 consume</text>
+    <line x1="120" y1="86" x2="860" y2="86" class="axis" marker-end="url(#arr)"/>
+    <text x="120" y="108" class="lbl">按下</text>
+    <g class="tick">
+      <line x1="130" y1="80" x2="130" y2="92"/><line x1="280" y1="80" x2="280" y2="92"/>
+      <line x1="430" y1="80" x2="430" y2="92"/><line x1="580" y1="80" x2="580" y2="92"/>
+      <line x1="730" y1="80" x2="730" y2="92"/>
+    </g>
+    <text x="280" y="108" class="lbl" text-anchor="middle">事件 1</text>
+    <text x="430" y="108" class="lbl" text-anchor="middle">事件 2</text>
+    <text x="580" y="108" class="lbl" text-anchor="middle">事件 3</text>
+    <text x="730" y="108" class="lbl" text-anchor="middle">事件 4</text>
 
-    <rect x="160" y="42" width="660" height="22" rx="4" class="box2"/>
-    <text x="170" y="57" class="tm2">:191 觀察用 — 不消耗任何事件</text>
+    <rect x="200" y="42" width="360" height="26" rx="4" class="box2"/>
+    <text x="380" y="60" class="tm2" text-anchor="middle">累積 dx，不 consume</text>
+    <rect x="564" y="42" width="34" height="26" rx="4" class="boxbad"/>
+    <text x="581" y="60" class="tw" text-anchor="middle">!</text>
+    <text x="604" y="60" class="tbad">跨越 slop — 但仍未 consume</text>
+    <rect x="700" y="42" width="160" height="26" rx="4" class="boxa"/>
+    <text x="780" y="60" class="tm2" text-anchor="middle">從這裡才開始 consume</text>
 
-    <rect x="160" y="112" width="220" height="24" rx="4" class="boxbad"/>
-    <text x="270" y="128" class="tm2" text-anchor="middle">無人聲明</text>
-    <rect x="380" y="112" width="440" height="24" rx="4" class="boxa"/>
-    <text x="600" y="128" class="tm2" text-anchor="middle">:211 change.consume() — 鎖定生效</text>
-    <text x="20" y="128" class="tm2">平移鎖定</text>
+    <text x="20" y="150" class="tm2">祖先 scrollable</text>
+    <text x="20" y="168" class="lbl">同一個 SLOP · 同一個 DX</text>
+    <line x1="200" y1="190" x2="560" y2="190" class="flowdash"/>
+    <text x="380" y="184" class="lbl" text-anchor="middle">也在累積</text>
+    <circle cx="581" cy="190" r="8" class="dotbad"/>
+    <path d="M581,200 L581,232" class="flowbad" marker-end="url(#arrB)"/>
+    <rect x="430" y="236" width="300" height="30" rx="5" class="boxbad"/>
+    <text x="580" y="256" class="tm2" text-anchor="middle">在同一個事件上接手 → 之後整段都在平移</text>
 
-    <text x="160" y="158" class="tbad">這段期間 scrollable 仍可能搶走手勢</text>
-    <text x="500" y="158" class="t2">而 waitForUpOrCancellation() 在交棒時返回 →</text>
-    <text x="500" y="174" class="t2">pressedZone 歸零，:152 用 draft?.mode ?: pressedZone 補</text>
-
-    <line x1="20" y1="192" x2="880" y2="192" class="tick"/>
-
-    <text x="20" y="220" class="tok">✓ 提案 — 單一 awaitEachGesture 擁有整段觸碰</text>
-    <line x1="150" y1="262" x2="840" y2="262" class="axis" marker-end="url(#arr)"/>
-    <g class="tick"><line x1="160" y1="256" x2="160" y2="268"/><line x1="820" y1="256" x2="820" y2="268"/></g>
-    <text x="150" y="284" class="lbl">按下 → down.consume()</text>
-    <text x="810" y="284" class="lbl" text-anchor="end">放開 → endEdit()</text>
-    <rect x="160" y="230" width="660" height="24" rx="4" class="boxa"/>
-    <text x="490" y="246" class="tm2" text-anchor="middle">編輯狀態 — 平移 / 兩指換區間 / 垂直捲動 全部停用</text>
+    <text x="20" y="290" class="t2">兩者用同一個 touchSlop、累積同一個 x 位移，所以<b>同時</b>跨越門檻。一個未消耗的事件就足以把手勢交出去。</text>
   </svg>
   </div></figure>
-  <figcaption>關鍵是<strong>在 down 事件就消耗</strong>。祖先的 <code>scrollable</code> 與 <code>verticalScroll</code> 都會檢查消耗狀態，所以消耗 down 本身就完成了鎖定。<code>editingTaskId</code> 狀態仍然需要，因為兩指滑動跑在 <code>Initial</code> pass、比這個 block 的 Main pass 更早看到事件（<code>SchedulerScreen.kt:87</code> 目前的條件是 <code>draft == null</code>，而 draft 同樣要等 slop 才存在）。合併之後 <code>:152</code> 那個補丁也一起消失。</figcaption>
+  <figcaption>這是本輪實機測試推翻的第一件事。spec 001 與 003 都寫過「子層優先分派，所以 bar 一定贏」並列為「只有實機能確認」 — <strong>它不成立</strong>，而原因不在 Compose 的分派規則，在這一個沒被消耗的事件。<br><br>修法用了兩層：在跨越的事件就 <code>consume()</code>（治根因），以及 <code>scrollable(enabled = !state.isEditing)</code>（從 touch-down 就停用父層，不再依賴消耗的時序）。第二層是必要的 — 若按下與跨越落在同一 frame，重組來不及讓第一層生效。</figcaption>
 </section>
 
 <section>
@@ -437,9 +440,117 @@
   </div></figure>
   <figcaption>這取代了本 spec 初稿「在 down 事件就 consume」的寫法。按下就 consume 會連帶封掉垂直的列表捲動（祖先的 <code>verticalScroll</code> 同樣檢查消耗狀態）— 六筆任務時看不出來，但任務一多，手指剛好落在 bar 上就捲不動列表。<br><br>平移依然無法從 bar 上的觸碰勝出：bar 與祖先的 <code>scrollable</code> 等的是同一個 slop，而指標事件在 main pass 先到子層，所以任何水平手勢都是 bar 先 consume。緩衝距離採平台的 <code>viewConfiguration.touchSlop</code> 而非自訂常數，讓 bar 的手感跟裝置上其他可拖曳元件一致；跨越緩衝所花的位移會交給第一次 <code>dragBy</code>，所以 bar 不會比手指落後一個 slop。</figcaption>
 </section>
+<section>
+  <h2><span class="num">05</span>拖曳只動一格就停住</h2>
+  <p class="lede">實機上的第二個問題：持續拖曳，bar 只前進一個吸附格就不動了。原因是 Compose 的一個 API 語意。</p>
+  <div class="duo">
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 210" role="img" aria-label="先消耗再讀取導致位移歸零">
+        <text x="14" y="20" class="tbad">✗ 先 consume，再讀 positionChange()</text>
+        <rect x="14" y="40" width="402" height="26" rx="4" class="boxbad"/>
+        <text x="24" y="58" class="tm2">change.consume()</text>
+        <rect x="14" y="72" width="402" height="26" rx="4" class="boxbad"/>
+        <text x="24" y="90" class="tm2">dragBy(change.positionChange().x)  →  0</text>
+        <line x1="40" y1="170" x2="400" y2="170" class="tick"/>
+        <line x1="40" y1="118" x2="40" y2="170" class="tick"/>
+        <text x="30" y="174" class="lbl" text-anchor="end">0</text>
+        <text x="30" y="136" class="lbl" text-anchor="end">15m</text>
+        <polyline points="40,170 70,132 120,132 180,132 240,132 300,132 360,132 400,132" class="seriesbad"/>
+        <text x="200" y="196" class="tbad" text-anchor="middle">種子那一格之後，永遠加 0</text>
+      </svg>
+    </div></figure>
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 210" role="img" aria-label="先讀取再消耗">
+        <text x="14" y="20" class="tok">✓ 先讀 positionChange()，再 consume</text>
+        <rect x="14" y="40" width="402" height="26" rx="4" class="boxa"/>
+        <text x="24" y="58" class="tm2">val deltaX = change.positionChange().x</text>
+        <rect x="14" y="72" width="402" height="26" rx="4" class="boxa"/>
+        <text x="24" y="90" class="tm2">change.consume()  ·  dragBy(deltaX)</text>
+        <line x1="40" y1="170" x2="400" y2="170" class="tick"/>
+        <line x1="40" y1="118" x2="40" y2="170" class="tick"/>
+        <text x="30" y="174" class="lbl" text-anchor="end">0</text>
+        <text x="30" y="136" class="lbl" text-anchor="end">15m</text>
+        <polyline points="40,170 70,170 100,160 140,160 170,150 210,150 240,140 280,140 310,130 350,130 380,122 400,122" class="seriesok"/>
+        <text x="200" y="196" class="tok" text-anchor="middle">一路跟著手指，以整格前進</text>
+      </svg>
+    </div></figure>
+  </div>
+  <figcaption><code>PointerInputChange.positionChange()</code> 的語意是「<strong>扣除已消耗部分</strong>後的位移」，所以 <code>isConsumed</code> 為 true 之後它回傳 <code>Offset.Zero</code>。拖曳只前進了跨越緩衝時被當成種子餵進去的那段 — 在 15 分網格上剛好是一格 — 之後每一 frame 都是加 0。<br><br>這個行為我記得但不確定，所以先寫測試驗證才動手修。<code>PointerInputChange</code> 是純 Kotlin class、無 Android 依賴，可以在純 JVM 測試裡直接建構，所以 <code>PointerChangeSemanticsTest</code> 把這個契約釘住了三項：未消耗時回報位移、已消耗時回報零、<code>positionChangeIgnoreConsumed()</code> 仍回報位移。</figcaption>
+</section>
+<section>
+  <h2><span class="num">06</span>會自己取消的手勢</h2>
+  <p class="lede">這一項不是實機發現的，是修前一項時檢查出來的 — 而它會讓 resize 一動就斷。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 250" role="img" aria-label="pointerInput 的 key 在 resize 中途改變導致手勢重啟">
+    <text x="20" y="26" class="tbad">✗ pointerInput(task.id, pxPerMinute, barWidthPx, handlePx, edgeThresholdPx)</text>
+    <rect x="20" y="48" width="200" height="40" rx="5" class="box"/>
+    <text x="120" y="66" class="tm2" text-anchor="middle">resize 第一 frame</text>
+    <text x="120" y="80" class="lbl" text-anchor="middle">duration 改變</text>
+    <line x1="224" y1="68" x2="246" y2="68" class="flowbad" marker-end="url(#arrB)"/>
+    <rect x="250" y="48" width="180" height="40" rx="5" class="boxbad"/>
+    <text x="340" y="72" class="tm2" text-anchor="middle">barWidthPx 改變</text>
+    <line x1="434" y1="68" x2="456" y2="68" class="flowbad" marker-end="url(#arrB)"/>
+    <rect x="460" y="48" width="180" height="40" rx="5" class="boxbad"/>
+    <text x="550" y="72" class="tm2" text-anchor="middle">key 改變</text>
+    <line x1="644" y1="68" x2="666" y2="68" class="flowbad" marker-end="url(#arrB)"/>
+    <rect x="670" y="48" width="210" height="40" rx="5" class="boxbad"/>
+    <text x="775" y="66" class="tb" text-anchor="middle">suspend block 重啟</text>
+    <text x="775" y="80" class="lbl" text-anchor="middle">手勢被取消</text>
+
+    <line x1="20" y1="112" x2="880" y2="112" class="tick"/>
+
+    <text x="20" y="142" class="tok">✓ pointerInput(task.id) + rememberUpdatedState(LaneMetrics)</text>
+    <rect x="20" y="162" width="200" height="56" rx="5" class="boxa"/>
+    <text x="120" y="184" class="tm2" text-anchor="middle">key = task.id</text>
+    <text x="120" y="200" class="lbl" text-anchor="middle">手勢期間恆定</text>
+    <line x1="224" y1="190" x2="246" y2="190" class="flow" marker-end="url(#arr)"/>
+    <rect x="250" y="162" width="290" height="56" rx="5" class="boxa"/>
+    <text x="395" y="182" class="tm" text-anchor="middle">metrics.value</text>
+    <text x="395" y="200" class="lbl" text-anchor="middle">每 FRAME 讀到最新的寬度 / 把手 / 座標基準</text>
+    <line x1="544" y1="190" x2="566" y2="190" class="flow" marker-end="url(#arr)"/>
+    <rect x="570" y="162" width="310" height="56" rx="5" class="boxa"/>
+    <text x="725" y="190" class="tb" text-anchor="middle">block 從不被重啟</text>
+  </svg>
+  </div></figure>
+  <figcaption>同一個缺陷還有第二個症狀：自動捲動的 <code>fingerX</code> 以 <code>bar 左緣 + 指標在 bar 內的位置</code> 推算，而「bar 左緣」若是組合時捕捉的值就不會更新 — bar 移動時那個基準停在原地，<code>fingerX</code> 會逐漸漂掉。<code>rememberUpdatedState</code> 同時解掉兩者。</figcaption>
+</section>
+<section>
+  <h2><span class="num">07</span>編輯中的樣式</h2>
+  <p class="lede">三個命中區在視覺上是隱形的，進入編輯狀態也沒有明確的外觀。加上斜線。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 200" role="img" aria-label="閒置與編輯中的 bar 外觀對照">
+    <defs>
+      <pattern id="hatch" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+        <line x1="0" y1="0" x2="0" y2="9" stroke="#fff" stroke-opacity="0.32" stroke-width="2.5"/>
+      </pattern>
+    </defs>
+    <text x="20" y="28" class="lbl">閒置</text>
+    <rect x="20" y="44" width="380" height="40" rx="6" class="bc2"/>
+    <rect x="27" y="57" width="2" height="14" rx="1" class="grip"/>
+    <rect x="391" y="57" width="2" height="14" rx="1" class="grip"/>
+    <text x="42" y="69" class="tw">設計稿</text>
+    <text x="20" y="108" class="t2">平面色塊，兩端 grip 微弱</text>
+
+    <text x="500" y="28" class="lbl">編輯中（按下即生效）</text>
+    <rect x="500" y="44" width="380" height="40" rx="6" class="bc2"/>
+    <rect x="500" y="44" width="380" height="40" rx="6" fill="url(#hatch)"/>
+    <rect x="500" y="44" width="380" height="40" rx="6" class="editframe"/>
+    <rect x="500" y="44" width="48" height="40" class="wash"/>
+    <rect x="507" y="55" width="2" height="18" rx="1" class="griplit"/>
+    <rect x="871" y="56" width="2" height="16" rx="1" class="griplit"/>
+    <text x="558" y="69" class="tw">設計稿</text>
+    <text x="500" y="108" class="t2">45° 斜線 · 2dp 白框 · 命中區高亮 · grip 亮起</text>
+
+    <line x1="20" y1="130" x2="880" y2="130" class="tick"/>
+    <text x="20" y="158" class="tm2">為什麼是斜線而不是變色</text>
+    <text x="20" y="180" class="t2">bar 的顏色是它在圖表裡的<b>身分</b>。重新上色會讀成「換了一個任務」，而不是「這個任務正在被編輯」。斜線是疊在上面的狀態層，六種色票都成立。</text>
+  </svg>
+  </div></figure>
+  <figcaption>樣式從 <strong>touch-down</strong> 就出現，不等拖曳開始 — 與命中區高亮一起構成「按到了、按在這一區」的即時回饋。斜線畫在 <code>clip(BarShape)</code> 之後，所以會被圓角裁切。</figcaption>
+</section>
 
 <section>
-  <h2><span class="num">05</span>編輯時拖到邊緣會讓出空間</h2>
+  <h2><span class="num">08</span>編輯時拖到邊緣會讓出空間</h2>
   <p class="lede">平移一鎖，這項就從「好用」變成「必要」 — 否則使用者沒有任何方式把 bar 拖出目前視窗。</p>
   <figure class="frame"><div class="scroller">
   <svg viewBox="0 0 900 250" role="img" aria-label="邊緣自動捲動時 bar 與視窗同步移動">
@@ -469,7 +580,7 @@
 </section>
 
 <section>
-  <h2><span class="num">06</span>紅線落在畫面正中</h2>
+  <h2><span class="num">09</span>紅線落在畫面正中</h2>
   <p class="lede">目前 <code>TimeScale.todayStart()</code>（<code>model/TimeScale.kt:64</code>）把「現在」放在靠左的位置，因為它不需要知道視窗寬度。置中需要寬度。</p>
   <div class="duo">
     <figure class="frame"><div class="scroller">
@@ -502,7 +613,7 @@
 </section>
 
 <section>
-  <h2><span class="num">07</span>已確認的決定</h2>
+  <h2><span class="num">10</span>已確認的決定</h2>
   <div class="cards three">
     <div class="card"><span class="phase">1 · 緩衝</span><h3>採平台 touchSlop</h3><p>位移超過才動。用平台值而非自訂常數，讓 bar 跟裝置上其他可拖曳元件一致。跨越緩衝的位移不丟棄。</p></div>
     <div class="card"><span class="phase">2 · 垂直</span><h3>忽略，不封鎖</h3><p>軸向在緩衝邊界判定。水平歸 bar 並鎖平移；垂直從不 consume，讓列表捲動器接走。見第 04 節。</p></div>
@@ -514,8 +625,8 @@
   <div class="note" style="margin-top:22px; background:var(--ok-soft); border-color:var(--ok)">
     <b>進入時機已確認。</b>編輯從<strong>按下</strong>開始，沒有時間門檻。「長按」指的是「按住並持續拖動」的那整段過程 — 一次按住就涵蓋延長、縮短、位移三種編輯，放開即結束。所以不需要 <code>awaitLongPressOrCancellation</code>，按下與移動之間唯一的關卡就是第 1 項決定裡的緩衝距離。
   </div>
-  <div class="note" style="margin-top:14px; background:var(--surface-2); border-color:var(--rule-strong)">
-    <b>三件只有實機能定的事。</b>子層優先分派是否真的讓 bar 贏過 <code>scrollable</code>（推論自 spec 001，從未在裝置上確認）；平台 touchSlop 當緩衝是否手感正確，或 bar 需要更大的值；自動捲動的速度斜坡 — 純手感。
+  <div class="note" style="margin-top:14px; background:var(--ok-soft); border-color:var(--ok)">
+    <b>實機驗證結果。</b>四項改動全部通過。三件「只有實機能定」的事裡：<strong>子層優先分派不成立</strong>（見第 03 節，已修）；平台 touchSlop 當緩衝的手感可接受，未調整；自動捲動的斜坡 <code>AutoScrollMaxPxPerFrame = 14f</code> 可接受，未調整。<br><br>另外在實機上發現並修掉兩件：拖曳只動一格（第 05 節）、以及 resize 會自我取消（第 06 節）。測試 48 → 51 項。
   </div>
 </section>
 

@@ -1,6 +1,6 @@
 # Spec 003 — Edit lock, scale-derived snapping, centred on now
 
-- **Status:** draft
+- **Status:** implemented and verified on device, 2026-10-10
 - **Date:** 2026-10-10
 - **Baseline:** `v0.2.0`
 - **Scope:** `app/src/main/java/com/weiting/timeline/scheduler/`
@@ -389,3 +389,73 @@ Confirmed in discussion, 2026-10-10.
 - Whether the platform touch slop feels right as the buffer, or wants to be larger
   specifically for bars.
 - The auto-scroll velocity ramp, which is pure feel.
+
+
+---
+
+## Resolution
+
+All four changes implemented and confirmed on a Pixel 9 Pro XL. 51 JVM unit tests, clean
+build, no warnings.
+
+### What the device disproved
+
+**Child-first pointer dispatch does not, on its own, let a bar win a horizontal gesture.**
+Specs 001 and 003 both asserted it and both flagged it as unverifiable without hardware.
+It failed: dragging a bar panned the whole timeline.
+
+The cause was not Compose's dispatch order but a one-event hole in the implementation. The
+bar and the ancestor `scrollable` measure the same touch slop against the same accumulated
+x, so they cross on the *same* event — and that crossing event was left unconsumed while
+the loop went on to await the next one. A single unconsumed change was enough to hand the
+gesture over for the rest of the drag.
+
+Fixed in two layers, both kept:
+
+1. `change.consume()` on the crossing event itself, which addresses the cause.
+2. `scrollable(enabled = !state.isEditing)`, which removes the race rather than winning
+   it. Needed because `beginEdit` fires at touch-down but takes a recomposition to reach
+   the modifier, so if press and slop-crossing land in one frame, layer 1 is the only
+   thing holding.
+
+### Two defects found after that
+
+**A drag advanced one grid step and then stopped.** `positionChange()` reports
+`Offset.Zero` once the change is consumed, and the loop consumed before reading. The bar
+moved only by the travel seeded from crossing the buffer — exactly one snap step — and
+then added zero every frame.
+
+This one *is* testable, unlike the stale-`Task` bug in spec 001:
+`PointerInputChange` is a plain Kotlin class with no Android dependencies, so
+`PointerChangeSemanticsTest` now pins the contract in three assertions rather than leaving
+it to a comment. The API behaviour was recalled but not trusted, so the test was written
+before the fix.
+
+**The gesture cancelled itself on resize.** `pointerInput` was keyed on
+`(task.id, pxPerMinute, barWidthPx, handlePx, edgeThresholdPx)`, and `barWidthPx` changes
+on the first frame of a resize — so the suspend block restarted and the gesture died.
+Found while fixing the above, not on the device, because the panning bug had been masking
+it. The same defect had a second symptom: auto-scroll derives `fingerX` from the bar's left
+edge, which was captured at composition and so went stale as the bar moved.
+
+Both fixed by keying the block on `task.id` alone and reading everything mutable through a
+`rememberUpdatedState(LaneMetrics)` holder.
+
+### Added beyond the spec
+
+**An edit style.** Requested after the first device run: a 45° white hatch at 32% over the
+bar, a 2dp white border, and the grips lit, all from touch-down rather than from the start
+of the drag. Hatching rather than a colour change because a bar's colour is its identity
+in the chart — repainting it reads as a different task, not as a task being edited — and
+hatching works over all six palette colours.
+
+### Settled by use
+
+- The platform `viewConfiguration.touchSlop` is the right buffer for a bar; not adjusted.
+- `AutoScrollMaxPxPerFrame = 14f` felt right first time; not adjusted.
+
+### Still unverified
+
+- Whether `fingerX` stays correct when a bar is clipped outside the viewport. The
+  arithmetic is right by construction but the clipped case was not exercised, and it
+  cannot be reached from a unit test.
