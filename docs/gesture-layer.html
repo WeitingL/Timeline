@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>手勢層 — 拖曳、Resize、吸附</title>
+<style>
+  :root{
+    color-scheme:light;
+    --ground:#F5F7FA; --surface:#FFFFFF; --surface-2:#EDF0F6; --surface-3:#E1E6F0;
+    --ink:#131722; --ink-2:#4C566A; --ink-3:#7A8498;
+    --rule:#DBE1EB; --rule-strong:#BDC5D5;
+    --accent:#3F6FE4; --accent-soft:#E7EDFC; --accent-ink:#2B55BC;
+    --ok:#0E9F8A; --ok-soft:#E0F4F0;
+    --warn:#C9741C; --warn-soft:#FBEEDC;
+    --bad:#D2495F; --bad-soft:#FBE7EA;
+    --idle-soft:#E9ECF3;
+    --bar-1:#3F6FE4; --bar-2:#0E9F8A; --bar-3:#E08A2E;
+    --bar-4:#8E5BD4; --bar-5:#D2495F; --bar-6:#2A9FB8;
+    --shadow:0 1px 2px rgba(19,23,34,.05), 0 10px 28px -20px rgba(19,23,34,.3);
+    --sans:system-ui,-apple-system,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    --serif:Georgia,"Songti TC","Times New Roman",serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      color-scheme:dark;
+      --ground:#0E1117; --surface:#161A22; --surface-2:#1D222C; --surface-3:#262C38;
+      --ink:#E7EAF1; --ink-2:#A4ADBE; --ink-3:#798395;
+      --rule:#262C38; --rule-strong:#3A4250;
+      --accent:#7D9CF2; --accent-soft:#1A2440; --accent-ink:#A6BCF8;
+      --ok:#34C3A8; --ok-soft:#102E2B;
+      --warn:#E3A054; --warn-soft:#33250F;
+      --bad:#E9697D; --bad-soft:#331A1F;
+      --idle-soft:#1F242F;
+      --bar-1:#5C85EC; --bar-2:#21B49C; --bar-3:#E89C48;
+      --bar-4:#A074E0; --bar-5:#DD6477; --bar-6:#3FB3CB;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -22px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --ground:#0E1117; --surface:#161A22; --surface-2:#1D222C; --surface-3:#262C38;
+    --ink:#E7EAF1; --ink-2:#A4ADBE; --ink-3:#798395;
+    --rule:#262C38; --rule-strong:#3A4250;
+    --accent:#7D9CF2; --accent-soft:#1A2440; --accent-ink:#A6BCF8;
+    --ok:#34C3A8; --ok-soft:#102E2B;
+    --warn:#E3A054; --warn-soft:#33250F;
+    --bad:#E9697D; --bad-soft:#331A1F;
+    --idle-soft:#1F242F;
+    --bar-1:#5C85EC; --bar-2:#21B49C; --bar-3:#E89C48;
+    --bar-4:#A074E0; --bar-5:#DD6477; --bar-6:#3FB3CB;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -22px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  img{max-width:100%}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:980px; margin:0 auto; padding-inline:20px; padding-block:36px 72px}
+
+  /* ---------- masthead ---------- */
+  .top{display:flex; align-items:flex-start; gap:16px}
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-3); display:flex; align-items:center; gap:10px;
+  }
+  .tickrule{
+    flex:1; min-width:30px; height:8px; border-bottom:1px solid var(--rule-strong);
+    background-image:repeating-linear-gradient(to right,var(--rule-strong) 0 1px,transparent 1px 12px);
+    background-position:bottom; background-repeat:repeat-x; background-size:12px 4px;
+  }
+  h1{font-family:var(--serif); font-weight:600; font-size:clamp(27px,5.6vw,40px); line-height:1.12; margin:12px 0 0; text-wrap:balance}
+  .standfirst{color:var(--ink-2); margin:12px 0 0; max-width:60ch; font-size:16px}
+  #tt{
+    flex:0 0 auto; margin-top:2px; background:var(--surface); color:var(--ink-2);
+    border:1px solid var(--rule-strong); border-radius:7px; padding:6px 11px;
+    font-family:var(--mono); font-size:11px; cursor:pointer;
+  }
+  #tt:hover{border-color:var(--accent); color:var(--accent-ink)}
+  #tt:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* ---------- sections ---------- */
+  section{margin-top:52px}
+  h2{font-family:var(--serif); font-weight:600; font-size:23px; margin:0 0 4px; display:flex; align-items:baseline; gap:11px}
+  h2 .num{font-family:var(--mono); font-size:12.5px; color:var(--accent)}
+  .lede{color:var(--ink-2); margin:0 0 4px; max-width:66ch; font-size:14.5px}
+  figure{margin:18px 0 0}
+  figcaption{font-size:12.5px; color:var(--ink-3); margin-top:9px; max-width:74ch}
+  figcaption code{font-size:11.5px}
+  code{font-family:var(--mono); font-size:.875em; background:var(--surface-2); border:1px solid var(--rule); border-radius:4px; padding:1px 5px}
+
+  .frame{background:var(--surface); border:1px solid var(--rule); border-radius:10px; padding:14px; box-shadow:var(--shadow)}
+  .scroller{overflow-x:auto}
+  .scroller svg{display:block; width:100%; min-width:620px; height:auto}
+  .duo{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px}
+  .duo .frame .scroller svg{min-width:0}
+
+  /* ---------- svg diagram tokens ---------- */
+  svg text{font-family:var(--sans)}
+  .t{fill:var(--ink); font-size:12px}
+  .tb{fill:var(--ink); font-size:12.5px; font-weight:600}
+  .t2{fill:var(--ink-2); font-size:11.5px}
+  .tm{fill:var(--ink); font-family:var(--mono); font-size:11px}
+  .tm2{fill:var(--ink-2); font-family:var(--mono); font-size:10.5px}
+  .lbl{fill:var(--ink-3); font-family:var(--mono); font-size:10px; letter-spacing:.07em}
+  .tw{fill:#fff; font-size:10.5px; font-weight:500}
+  .tok{fill:var(--ok); font-size:11.5px; font-weight:600}
+  .tbad{fill:var(--bad); font-size:11.5px; font-weight:600}
+  .tacc{fill:var(--accent-ink); font-family:var(--mono); font-size:10.5px}
+
+  .box{fill:var(--surface); stroke:var(--rule-strong); stroke-width:1}
+  .box2{fill:var(--surface-2); stroke:var(--rule); stroke-width:1}
+  .box3{fill:var(--surface-3); stroke:var(--rule); stroke-width:1}
+  .boxa{fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2}
+  .boxbad{fill:var(--bad-soft); stroke:var(--bad); stroke-width:1.2}
+  .boxdash{fill:none; stroke:var(--rule-strong); stroke-width:1.2; stroke-dasharray:5 4}
+  .boxadash{fill:var(--accent-soft); fill-opacity:.45; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:5 4}
+  .axis{stroke:var(--ink-2); stroke-width:1.5; fill:none}
+  .tick{stroke:var(--rule-strong); stroke-width:1}
+  .gridl{stroke:var(--rule-strong); stroke-width:1; stroke-dasharray:3 4}
+  .guide{stroke:var(--accent); stroke-width:1; stroke-dasharray:3 4; opacity:.6}
+  .dim{stroke:var(--accent); stroke-width:1.2; fill:none}
+  .flow{stroke:var(--ink-2); stroke-width:1.4; fill:none}
+  .flowdash{stroke:var(--ink-3); stroke-width:1.2; fill:none; stroke-dasharray:5 4}
+  .flowbad{stroke:var(--bad); stroke-width:1.4; fill:none}
+  .bc1{fill:var(--bar-1)} .bc2{fill:var(--bar-2)} .bc3{fill:var(--bar-3)}
+  .bc4{fill:var(--bar-4)} .bc5{fill:var(--bar-5)} .bc6{fill:var(--bar-6)}
+  #arr path{fill:var(--ink-2)} #arrA path{fill:var(--accent)} #arrB path{fill:var(--bad)}
+
+  /* ---------- screen mock ---------- */
+  .mock{border:1px solid var(--rule-strong); border-radius:10px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow); font-size:11px}
+  .mc{padding:9px 11px; border-bottom:1px solid var(--rule); display:flex; flex-direction:column; gap:7px}
+  .mr{display:flex; align-items:center; gap:5px; flex-wrap:wrap}
+  .chip{border:1px solid var(--rule-strong); border-radius:99px; padding:2.5px 11px; color:var(--ink-2); white-space:nowrap}
+  .chip.on{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); font-weight:600}
+  .sp{flex:1 1 auto; min-width:4px}
+  .nav{color:var(--accent-ink); padding:2px 8px; font-weight:600}
+  .md{font-family:var(--mono); font-weight:600; font-size:12px}
+  .zw{display:flex; align-items:center; gap:6px; color:var(--ink-3)}
+  .zoom{width:66px; height:3px; background:var(--surface-3); border-radius:99px; position:relative}
+  .zoom::before{content:""; position:absolute; inset:0 66% 0 0; background:var(--accent); border-radius:99px}
+  .zoom::after{content:""; position:absolute; left:34%; top:-3.5px; width:10px; height:10px; border-radius:50%; background:var(--accent)}
+  .mg{display:grid; grid-template-columns:100px 1fr}
+  .mcorner{border-right:1px solid var(--rule-strong); border-bottom:1px solid var(--rule)}
+  .maxis{border-bottom:1px solid var(--rule); display:flex; position:relative; height:32px}
+  .tk{flex:1 1 0; min-width:0; border-left:1px solid var(--rule); font-family:var(--mono); font-size:9.5px; color:var(--ink-3); padding:3px 0 0 4px; overflow:hidden; white-space:nowrap}
+  .tk.maj{border-left:1.5px solid var(--rule-strong); color:var(--ink-2); font-weight:600}
+  .mlabels{border-right:1px solid var(--rule-strong)}
+  .lab{height:40px; padding:0 9px; display:flex; flex-direction:column; justify-content:center; overflow:hidden}
+  .lab b{font-size:11px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .lab span{font-family:var(--mono); font-size:9px; color:var(--ink-3)}
+  .mlanes{position:relative}
+  .lane{height:40px; position:relative}
+  .lane::before{content:""; position:absolute; inset:0; background-image:repeating-linear-gradient(to right,var(--rule) 0 1px,transparent 1px 11.111%); opacity:.8}
+  .bar{position:absolute; top:8px; height:24px; border-radius:5px; display:flex; align-items:center; padding:0 6px; color:#fff; font-size:10px; font-weight:600; white-space:nowrap; overflow:hidden; min-width:10px}
+  .now{position:absolute; top:0; bottom:0; width:1.5px; background:var(--bad); opacity:.8}
+  .now.ax::after{content:""; position:absolute; bottom:-3px; left:-2.25px; width:6px; height:6px; border-radius:50%; background:var(--bad)}
+
+  /* ---------- scoreboard ---------- */
+  .score{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:9px; margin-top:18px}
+  .sc{background:var(--surface); border:1px solid var(--rule); border-left-width:3px; border-radius:7px; padding:10px 12px}
+  .sc.d{border-left-color:var(--ok)} .sc.p{border-left-color:var(--warn)} .sc.t{border-left-color:var(--rule-strong)}
+  .sc b{display:block; font-size:13px; font-weight:600}
+  .sc span{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase}
+  .sc.d span{color:var(--ok)} .sc.p span{color:var(--warn)} .sc.t span{color:var(--ink-3)}
+  .sc em{display:block; font-family:var(--mono); font-style:normal; font-size:10.5px; color:var(--ink-3); margin-top:3px}
+
+  .note{margin-top:22px; background:var(--warn-soft); border:1px solid var(--warn); border-radius:9px; padding:13px 15px; font-size:13.5px}
+  .note b{color:var(--warn)}
+  footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-3)}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+<style>
+  /* additions for the gesture diagrams */
+  .pin{fill:var(--ink-2)}
+  .divider{stroke:#fff; stroke-width:1; opacity:.55}
+  .grip{fill:#fff; opacity:.6}
+  .leader{stroke:var(--rule-strong); stroke-width:1}
+  .crossout{stroke:var(--bad); stroke-width:1.6; fill:none}
+  .seriesok{stroke:var(--accent); stroke-width:2; fill:none}
+  .seriesbad{stroke:var(--bad); stroke-width:2; fill:none}
+  .seriesraw{stroke:var(--ink-3); stroke-width:1.4; fill:none; stroke-dasharray:4 3}
+  .seriesraw2{stroke:var(--ink-2); stroke-width:1.6; fill:none; stroke-dasharray:5 4}
+  .dotok circle,.dotok2{fill:var(--accent)}
+  .dotbad circle{fill:var(--bad)}
+  .dotraw{fill:var(--ink-2)}
+  .phase{display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--ink-3); margin-bottom:5px}
+  .card h3{font-size:14.5px; margin-top:2px}
+  .cards.three{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arr"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+  <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+  <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+</defs></svg>
+
+<div class="page">
+
+<header>
+  <div class="top">
+    <div style="flex:1; min-width:0">
+      <div class="eyebrow"><span>Spec 001</span><span class="tickrule"></span><span>2026-10-10</span></div>
+      <h1>手勢層<br>拖曳 · Resize · 吸附</h1>
+      <p class="standfirst">任務 bar 從靜態變成可操作。三種手勢共用一份 draft，全部吸附到可配置的時間網格。以下七張圖是這次實作的全部決策。</p>
+      <p style="margin:14px 0 0"><a href="architecture.html">← 回到框架總覽</a></p>
+    </div>
+    <button id="tt" type="button">主題</button>
+  </div>
+  <div class="score" style="margin-top:26px">
+    <div class="sc d"><span>完成</span><b>拖曳移動 bar</b><em>start 改變</em></div>
+    <div class="sc d"><span>完成</span><b>拖曳邊緣 resize</b><em>左緣 / 右緣</em></div>
+    <div class="sc d"><span>完成</span><b>吸附到時間網格</b><em>即時 / 放手 可切換</em></div>
+    <div class="sc d"><span>測試</span><b>28 項單元測試</b><em>純 JVM · 無需裝置</em></div>
+  </div>
+</header>
+
+<section>
+  <h2><span class="num">01</span>三種手勢，各自釘住什麼</h2>
+  <p class="lede">抓在 bar 的哪個位置決定做哪一件事。關鍵是每種手勢「不動的那一端」。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 290" role="img" aria-label="三種手勢的前後對照">
+    <text x="20" y="46" class="tm">Move</text>
+    <rect x="210" y="34" width="200" height="30" rx="5" class="boxdash"/>
+    <rect x="330" y="34" width="200" height="30" rx="5" class="bc1"/>
+    <text x="338" y="54" class="tw">設計稿</text>
+    <line x1="210" y1="80" x2="330" y2="80" class="dim" marker-end="url(#arrA)"/>
+    <text x="270" y="97" class="tacc" text-anchor="middle">+Δ</text>
+    <text x="560" y="45" class="t">start 改變</text>
+    <text x="560" y="62" class="t2">duration 完全不變</text>
+
+    <line x1="20" y1="118" x2="880" y2="118" class="tick"/>
+
+    <text x="20" y="152" class="tm">ResizeEnd</text>
+    <rect x="210" y="140" width="200" height="30" rx="5" class="boxdash"/>
+    <rect x="210" y="140" width="290" height="30" rx="5" class="bc2"/>
+    <text x="218" y="160" class="tw">設計稿</text>
+    <path d="M210,176 l6,10 l-12,0 Z" class="pin"/>
+    <text x="210" y="200" class="lbl" text-anchor="middle">釘住</text>
+    <line x1="410" y1="186" x2="500" y2="186" class="dim" marker-end="url(#arrA)"/>
+    <text x="560" y="151" class="t">duration 改變</text>
+    <text x="560" y="168" class="t2">start 不動</text>
+
+    <line x1="20" y1="222" x2="880" y2="222" class="tick"/>
+
+    <text x="20" y="256" class="tm">ResizeStart</text>
+    <rect x="210" y="244" width="200" height="30" rx="5" class="boxdash"/>
+    <rect x="120" y="244" width="290" height="30" rx="5" class="bc4"/>
+    <text x="128" y="264" class="tw">設計稿</text>
+    <path d="M410,280 l6,10 l-12,0 Z" class="pin"/>
+    <text x="410" y="304" class="lbl" text-anchor="middle">釘住</text>
+    <line x1="210" y1="290" x2="120" y2="290" class="dim" marker-end="url(#arrA)"/>
+    <text x="560" y="255" class="t">start 與 duration 都變</text>
+    <text x="560" y="272" class="t2">end 不動，長度吸收全部位移</text>
+  </svg>
+  </div></figure>
+  <figcaption>虛線是手勢開始前的位置。<code>ResizeStart</code> 之所以兩個欄位都要改，是因為 <code>Task</code> 存的是 <code>start + duration</code> — 要釘住 <code>end</code>，就得讓 duration 反向吸收等量的位移。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">02</span>Bar 的三個命中區</h2>
+  <p class="lede">把手寬度在執行期被壓到「bar 寬度的三分之一」以內，所以再窄的 bar 都還留著可以移動的中段。</p>
+  <div class="duo">
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 175" role="img" aria-label="寬 bar 的命中區">
+        <text x="14" y="20" class="tm">一般寬度</text>
+        <rect x="40" y="52" width="320" height="34" rx="5" class="bc2"/>
+        <line x1="94" y1="52" x2="94" y2="86" class="divider"/>
+        <line x1="306" y1="52" x2="306" y2="86" class="divider"/>
+        <rect x="45" y="63" width="2" height="12" rx="1" class="grip"/>
+        <rect x="353" y="63" width="2" height="12" rx="1" class="grip"/>
+        <text x="67" y="74" class="tw" text-anchor="middle">起點</text>
+        <text x="200" y="74" class="tw" text-anchor="middle">移動</text>
+        <text x="333" y="74" class="tw" text-anchor="middle">長度</text>
+        <line x1="40" y1="102" x2="94" y2="102" class="dim" marker-start="url(#arrA)" marker-end="url(#arrA)"/>
+        <text x="67" y="119" class="tacc" text-anchor="middle">18dp</text>
+        <line x1="306" y1="102" x2="360" y2="102" class="dim" marker-start="url(#arrA)" marker-end="url(#arrA)"/>
+        <text x="333" y="119" class="tacc" text-anchor="middle">18dp</text>
+        <text x="14" y="152" class="t2">把手固定 18dp，中段佔絕大部分</text>
+      </svg>
+    </div></figure>
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 175" role="img" aria-label="窄 bar 的命中區">
+        <text x="14" y="20" class="tm">最窄的 bar</text>
+        <rect x="155" y="52" width="90" height="34" rx="5" class="bc4"/>
+        <line x1="185" y1="52" x2="185" y2="86" class="divider"/>
+        <line x1="215" y1="52" x2="215" y2="86" class="divider"/>
+        <line x1="170" y1="92" x2="170" y2="108" class="leader"/>
+        <line x1="200" y1="92" x2="200" y2="122" class="leader"/>
+        <line x1="230" y1="92" x2="230" y2="108" class="leader"/>
+        <text x="170" y="120" class="lbl" text-anchor="middle">起點</text>
+        <text x="200" y="134" class="lbl" text-anchor="middle">移動</text>
+        <text x="230" y="120" class="lbl" text-anchor="middle">長度</text>
+        <text x="200" y="40" class="tacc" text-anchor="middle">handle = min(18dp, 寬度 ÷ 3)</text>
+        <text x="14" y="160" class="tok">✓ 中間三分之一永遠存活</text>
+      </svg>
+    </div></figure>
+  </div>
+  <figcaption>為了讓這件事成立，<code>MinBarWidth</code> 從 <code>10.dp</code> 提高到 <code>52.dp</code> — 兩個 18dp 把手之間必須還塞得進一段可抓的中段，舊的下限比把手本身還窄。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">03</span>為什麼需要 draft</h2>
+  <p class="lede"><code>tasks</code> 是 <code>SnapshotStateList</code>。每 frame 寫進去，代價不只落在被拖的那一條。</p>
+  <div class="duo">
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 230" role="img" aria-label="直接寫入 tasks 的重組範圍">
+        <text x="14" y="20" class="tm">每 frame 直接寫 tasks</text>
+        <g>
+          <rect x="20" y="38" width="390" height="24" rx="4" class="boxbad"/>
+          <rect x="20" y="68" width="390" height="24" rx="4" class="boxbad"/>
+          <rect x="20" y="98" width="390" height="24" rx="4" class="boxbad"/>
+          <rect x="20" y="128" width="390" height="24" rx="4" class="boxbad"/>
+          <rect x="20" y="158" width="390" height="24" rx="4" class="boxbad"/>
+        </g>
+        <rect x="150" y="102" width="90" height="16" rx="3" class="bc3"/>
+        <text x="256" y="114" class="tm2">← 手指在這條</text>
+        <text x="14" y="208" class="tbad">✗ 5 條 lane 全部 invalidate</text>
+      </svg>
+    </div></figure>
+    <figure class="frame"><div class="scroller">
+      <svg viewBox="0 0 430 230" role="img" aria-label="draft 加上 per-lane derivedStateOf 的重組範圍">
+        <text x="14" y="20" class="tm">draft + 每 lane derivedStateOf</text>
+        <g>
+          <rect x="20" y="38" width="390" height="24" rx="4" class="box2"/>
+          <rect x="20" y="68" width="390" height="24" rx="4" class="box2"/>
+          <rect x="20" y="98" width="390" height="24" rx="4" class="boxa"/>
+          <rect x="20" y="128" width="390" height="24" rx="4" class="box2"/>
+          <rect x="20" y="158" width="390" height="24" rx="4" class="box2"/>
+        </g>
+        <rect x="150" y="102" width="90" height="16" rx="3" class="bc3"/>
+        <text x="256" y="114" class="tm2">← 手指在這條</text>
+        <text x="14" y="208" class="tok">✓ 只有 1 條 lane 重組</text>
+      </svg>
+    </div></figure>
+  </div>
+  <figcaption>draft 是單一 nullable 欄位，而每條 lane 透過綁定自己 <code>taskId</code> 的 <code>derivedStateOf</code> 去讀它。對沒被拖的 lane 來說那個值恆為 <code>null</code>，結構相等比較就把 invalidation 擋在那裡。若直接在 lane 裡讀 <code>state.draft</code>，所有 lane 都會每 frame 重組 — 等於白做。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">04</span>累積原始位移，不要回灌吸附值</h2>
+  <p class="lede">這是整個實作最細、也最容易寫錯的一點。每 frame 的 draft 必須從「手勢開始時的原始時間 + 累積的原始像素」推導，不能從上一個 frame 的 draft 推導。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 300" role="img" aria-label="累積原始位移與回灌吸附值的差異">
+    <text x="20" y="26" class="tbad">✗ 從上一個 frame 的 snapped 值再 +3 分</text>
+    <line x1="140" y1="56" x2="140" y2="130" class="tick"/>
+    <line x1="140" y1="130" x2="700" y2="130" class="tick"/>
+    <text x="128" y="134" class="lbl" text-anchor="end">0</text>
+    <text x="128" y="60" class="lbl" text-anchor="end">30m</text>
+    <polyline points="140,130 196,130 252,130 308,130 364,130 420,130 476,130 532,130 588,130 644,130" class="seriesbad"/>
+    <g class="dotbad">
+      <circle cx="140" cy="130" r="3"/><circle cx="196" cy="130" r="3"/><circle cx="252" cy="130" r="3"/>
+      <circle cx="308" cy="130" r="3"/><circle cx="364" cy="130" r="3"/><circle cx="420" cy="130" r="3"/>
+      <circle cx="476" cy="130" r="3"/><circle cx="532" cy="130" r="3"/><circle cx="588" cy="130" r="3"/>
+      <circle cx="644" cy="130" r="3"/>
+    </g>
+    <text x="720" y="100" class="tbad">3 分 &lt; 半格</text>
+    <text x="720" y="118" class="t2">每 frame 都 round 回 0</text>
+    <text x="720" y="136" class="t2">bar 永遠不動</text>
+
+    <line x1="20" y1="162" x2="880" y2="162" class="tick"/>
+
+    <text x="20" y="192" class="tok">✓ 累積原始像素，從原始時間推導</text>
+    <line x1="140" y1="212" x2="140" y2="286" class="tick"/>
+    <line x1="140" y1="286" x2="700" y2="286" class="tick"/>
+    <text x="128" y="290" class="lbl" text-anchor="end">0</text>
+    <text x="128" y="253" class="lbl" text-anchor="end">15m</text>
+    <text x="128" y="216" class="lbl" text-anchor="end">30m</text>
+    <line x1="140" y1="249" x2="700" y2="249" class="gridl"/>
+    <polyline points="140,286 196,282 252,275 308,268 364,261 420,256 476,249 532,242 588,235 644,228 644,212" class="seriesraw"/>
+    <polyline points="140,286 196,286 252,286 252,249 308,249 364,249 420,249 476,249 532,249 532,212 588,212 644,212" class="seriesok"/>
+    <g class="dotok">
+      <circle cx="252" cy="249" r="3"/><circle cx="532" cy="212" r="3"/>
+    </g>
+    <text x="720" y="232" class="tok">跨過格線才跳</text>
+    <text x="720" y="250" class="t2">10 frame × 3 分 = 30 分</text>
+    <text x="720" y="268" class="t2">虛線 = 未吸附的原始位移</text>
+  </svg>
+  </div></figure>
+  <figcaption>橫軸是連續十個 frame，每 frame 手指只移動 3 分鐘 — 小於半個 15 分鐘格。<code>TaskDragTest</code> 裡有一項測試專門釘住這個行為：十個 3 分鐘的 frame 必須累加成 30 分鐘。<code>TaskDraft</code> 存 <code>originalStart</code> / <code>originalDuration</code> 就是為此。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">05</span>夾限優先於吸附</h2>
+  <p class="lede">Resize 拖過對側邊緣時，bar 停住，而不是反轉。負長度在任何時刻都不可表示。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 200" role="img" aria-label="resize 夾限行為">
+    <rect x="260" y="52" width="280" height="30" rx="5" class="boxdash"/>
+    <text x="540" y="44" class="lbl" text-anchor="end">原始 2h</text>
+    <rect x="260" y="52" width="58" height="30" rx="5" class="bc5"/>
+    <path d="M260,88 l6,10 l-12,0 Z" class="pin"/>
+    <text x="260" y="112" class="lbl" text-anchor="middle">start 釘住</text>
+    <line x1="318" y1="44" x2="318" y2="98" class="dim"/>
+    <text x="330" y="40" class="tacc">minTaskDuration = 15m · 停在這裡</text>
+    <line x1="540" y1="140" x2="150" y2="140" class="flowbad" marker-end="url(#arrB)"/>
+    <text x="560" y="144" class="t2">手指一路拖到左邊界之外</text>
+    <g>
+      <rect x="140" y="52" width="110" height="30" rx="5" class="boxbad"/>
+      <path d="M146,58 L244,76 M244,58 L146,76" class="crossout"/>
+      <text x="195" y="112" class="tbad" text-anchor="middle">反轉</text>
+    </g>
+  </svg>
+  </div></figure>
+  <figcaption>兩個方向都有測試。被夾限的那一端可能落在格線之外 — 這是刻意的：夾限的語意比吸附強，「不要反轉」比「對齊格線」更不能妥協。<code>minTaskDuration</code> 是獨立的 config 欄位而非取自 <code>snapInterval</code>，否則把吸附切到「1 日」會瞬間撐大每一個短任務。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">06</span>手勢如何贏過捲動</h2>
+  <p class="lede">bar 的祖先掛著水平 <code>Modifier.scrollable</code>。兩者會爭奪同一根手指。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 230" role="img" aria-label="指標事件的分派與消耗">
+    <rect x="20" y="36" width="120" height="44" rx="6" class="boxa"/>
+    <text x="80" y="63" class="tm" text-anchor="middle">觸碰 bar</text>
+    <line x1="144" y1="58" x2="166" y2="58" class="flow" marker-end="url(#arr)"/>
+    <rect x="170" y="32" width="196" height="52" rx="6" class="box"/>
+    <text x="268" y="54" class="tb" text-anchor="middle">bar 的 pointerInput</text>
+    <text x="268" y="71" class="lbl" text-anchor="middle">子層先收到</text>
+    <line x1="370" y1="58" x2="392" y2="58" class="flow" marker-end="url(#arr)"/>
+    <rect x="396" y="32" width="178" height="52" rx="6" class="boxa"/>
+    <text x="485" y="54" class="tm" text-anchor="middle">change.consume()</text>
+    <text x="485" y="71" class="lbl" text-anchor="middle">標記為已消耗</text>
+    <line x1="578" y1="58" x2="600" y2="58" class="flow" marker-end="url(#arr)"/>
+    <rect x="604" y="32" width="196" height="52" rx="6" class="box2"/>
+    <text x="702" y="54" class="tb" text-anchor="middle">scrollable 不動作</text>
+    <text x="702" y="71" class="lbl" text-anchor="middle">看到已消耗就讓位</text>
+    <text x="816" y="63" class="tok">拖曳</text>
+
+    <line x1="20" y1="118" x2="880" y2="118" class="tick"/>
+
+    <rect x="20" y="152" width="120" height="44" rx="6" class="box"/>
+    <text x="80" y="179" class="tm" text-anchor="middle">觸碰空白處</text>
+    <line x1="144" y1="174" x2="166" y2="174" class="flow" marker-end="url(#arr)"/>
+    <rect x="170" y="148" width="196" height="52" rx="6" class="box2"/>
+    <text x="268" y="170" class="tb" text-anchor="middle">沒有子層消耗</text>
+    <text x="268" y="187" class="lbl" text-anchor="middle">lane 沒有手勢處理器</text>
+    <line x1="370" y1="174" x2="600" y2="174" class="flow" marker-end="url(#arr)"/>
+    <rect x="604" y="148" width="196" height="52" rx="6" class="boxa"/>
+    <text x="702" y="170" class="tb" text-anchor="middle">scrollable 取得手勢</text>
+    <text x="702" y="187" class="lbl" text-anchor="middle">平移時間軸</text>
+    <text x="816" y="179" class="tok">捲動</text>
+  </svg>
+  </div></figure>
+  <figcaption>Compose 的 Main pass 是子層先於父層分派，所以 bar 先看到事件；一旦 <code>consume()</code>，<code>scrollable</code> 檢查到 <code>isConsumed</code> 就不會啟動。這是純邏輯無法驗證的一環 — 分派順序只有真的用手指碰螢幕才能確認。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">07</span>即時吸附 vs 放手才吸附</h2>
+  <p class="lede">兩者落在完全相同的網格上，差的只有手感。所以它是一個開關，不是一個正確性問題。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 250" role="img" aria-label="兩種吸附模式下 bar 位置對手指位移的曲線">
+    <line x1="100" y1="30" x2="100" y2="195" class="tick"/>
+    <line x1="100" y1="195" x2="840" y2="195" class="tick" marker-end="url(#arr)"/>
+    <g class="gridl">
+      <line x1="100" y1="157.5" x2="820" y2="157.5"/><line x1="100" y1="120" x2="820" y2="120"/>
+      <line x1="100" y1="82.5" x2="820" y2="82.5"/><line x1="100" y1="45" x2="820" y2="45"/>
+    </g>
+    <text x="88" y="199" class="lbl" text-anchor="end">0</text>
+    <text x="88" y="161" class="lbl" text-anchor="end">15m</text>
+    <text x="88" y="124" class="lbl" text-anchor="end">30m</text>
+    <text x="88" y="86" class="lbl" text-anchor="end">45m</text>
+    <text x="88" y="49" class="lbl" text-anchor="end">60m</text>
+    <text x="470" y="223" class="lbl" text-anchor="middle">手指位移 →</text>
+    <text x="40" y="22" class="lbl">bar 位置</text>
+
+    <path d="M100,195 H190 V157.5 H370 V120 H550 V82.5 H730 V45 H820" class="seriesok"/>
+    <path d="M100,195 L724,60" class="seriesraw2"/>
+    <circle cx="724" cy="60" r="3.5" class="dotraw"/>
+    <line x1="724" y1="64" x2="724" y2="78" class="dim" marker-end="url(#arrA)"/>
+    <circle cx="724" cy="82.5" r="3.5" class="dotok2"/>
+    <text x="738" y="86" class="tacc">放手才吸附</text>
+
+    <rect x="600" y="24" width="240" height="26" rx="5" class="box"/>
+    <line x1="612" y1="37" x2="636" y2="37" class="seriesok"/>
+    <text x="642" y="41" class="t2">即時</text>
+    <line x1="700" y1="37" x2="724" y2="37" class="seriesraw2"/>
+    <text x="730" y="41" class="t2">放手才吸附</text>
+  </svg>
+  </div></figure>
+  <figcaption>即時吸附是階梯：bar 以整格為單位跳動，網格因此看得見。放手才吸附是斜線：1:1 跟著手指，放開才落到最近的格線。預設採即時 — 作業明確要求 snapping，reviewer 需要看得見它在運作。控制列上有 chip 可以即時對比兩者。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">08</span>七個開放問題的結論</h2>
+  <div class="cards three">
+    <div class="card"><span class="phase">Q1 · 吸附時機</span><h3>兩者都做，預設即時</h3><p>做成 <code>snapWhileDragging</code> 開關，控制列可切換。commit 時無條件再吸附一次，所以兩種模式最終都落在格線上。</p></div>
+    <div class="card"><span class="phase">Q2 · 窄 bar</span><h3>任何寬度都能 resize</h3><p>把手 = <code>min(18dp, 寬度/3)</code>，中間三分之一永遠是移動區。<code>MinBarWidth</code> 提到 52dp。</p></div>
+    <div class="card"><span class="phase">Q3 · 最小長度</span><h3>獨立 config 欄位</h3><p><code>minTaskDuration</code>，預設 15 分。不取自 <code>snapInterval</code>，避免切換吸附粒度時撐大短任務。有測試。</p></div>
+    <div class="card"><span class="phase">Q4 · 垂直拖曳</span><h3>不做</h3><p>列目前不代表任何語意，重排序編碼不了資訊。等到列代表某個人或資源時再談。</p></div>
+    <div class="card"><span class="phase">Q5 · 邊緣自動捲動</span><h3>不做</h3><p>最值得加的下一項。需要自己的 coroutine 去驅動 <code>scrollByPx</code>。</p></div>
+    <div class="card"><span class="phase">Q6 · 邊界</span><h3>任務不夾限</h3><p>只有視窗夾在 <code>origin ± 2 年</code>。要把任務拖出那個範圍得拖約兩年，防護的成本高於收益。</p></div>
+    <div class="card"><span class="phase">Q7 · 重疊</span><h3>純顯示</h3><p>不強制任何排程約束。任務可自由重疊，同列或跨列皆可。</p></div>
+    <div class="card"><span class="phase">尚未驗證</span><h3>需要真實螢幕</h3><p>指標分派順序是否真的讓 bar 贏過 <code>scrollable</code>，以及 <code>scrollable</code> 的 delta 正負號 — 兩者都只有手指碰到螢幕才能確認。</p></div>
+  </div>
+</section>
+
+<footer>
+  規格：<code>ai-cowork/001-gesture-layer.md</code> · 測試：<code>app/src/test/java/com/weiting/timeline/scheduler/</code> · 28 項，純 JVM 執行。
+</footer>
+
+</div>
+
+<script>
+  (function () {
+    var btn = document.getElementById('tt');
+    var root = document.documentElement;
+    try {
+      var saved = localStorage.getItem('tl-theme');
+      if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+    } catch (e) {}
+    btn.addEventListener('click', function () {
+      var dark = getComputedStyle(root).colorScheme.indexOf('dark') !== -1;
+      var next = dark ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('tl-theme', next); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>
