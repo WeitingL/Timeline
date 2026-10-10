@@ -35,17 +35,26 @@ class TimeAxis(
 
     fun widthOf(duration: Duration): Float = duration.toMinutes() * pxPerMinute
 
-    /**
-     * Rounds [time] to the nearest multiple of [interval], measured from [origin].
-     * Anchoring to the origin (rather than to the dragged task's own start) is what makes
-     * independently dragged bars line up with each other and with the grid.
-     */
-    fun snap(time: LocalDateTime, interval: Duration): LocalDateTime {
-        val step = interval.toMinutes()
-        if (step <= 0L) return time
-        val snapped = (minutesOf(time) / step).roundToLong() * step
-        return origin.plusMinutes(snapped)
-    }
+    /** @see snapToGrid */
+    fun snap(time: LocalDateTime, interval: Duration): LocalDateTime =
+        snapToGrid(origin, time, interval)
+}
+
+/**
+ * Rounds [time] to the nearest multiple of [interval], measured from [origin].
+ *
+ * Anchoring to the origin rather than to the dragged task's own start is what makes
+ * independently dragged bars line up with each other and with the header's tick lines;
+ * per-task anchoring would give every bar a private grid.
+ *
+ * Top-level rather than a method, because the gesture layer needs it without holding a
+ * [TimeAxis]: snapping is calendar arithmetic and has nothing to do with pixels.
+ */
+fun snapToGrid(origin: LocalDateTime, time: LocalDateTime, interval: Duration): LocalDateTime {
+    val step = interval.toMinutes()
+    if (step <= 0L) return time
+    val minutes = Duration.between(origin, time).toMinutes()
+    return origin.plusMinutes((minutes.toDouble() / step).roundToLong() * step)
 }
 
 /** One tick on the time axis. */
