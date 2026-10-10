@@ -65,9 +65,122 @@ class SchedulerState(
         config = config.copy(snapInterval = interval)
     }
 
+    fun setSnapWhileDragging(enabled: Boolean) {
+        config = config.copy(snapWhileDragging = enabled)
+    }
+
     fun setRowHeight(height: Dp) {
         config = config.copy(rowHeight = height)
     }
+
+    // --- dragging --------------------------------------------------------------------
+
+    /** The edit in flight, or null. Only the dragged lane reads this. */
+    var draft: TaskDraft? by mutableStateOf(null)
+        private set
+
+    /**
+     * Raw, unsnapped pixel total for the gesture in flight. Snapping is applied to the
+     * derived time, never fed back into this accumulator.
+     */
+    private var dragAccumPx = 0f
+
+    fun beginDrag(task: Task, mode: DragMode) {
+        dragAccumPx = 0f
+        draft = TaskDraft.of(task, mode)
+    }
+
+    /**
+     * Advances the in-flight edit. Does not touch [tasks]; nothing is committed until
+     * [commitDrag].
+     */
+    fun dragBy(deltaPx: Float, pxPerMinute: Float) {
+        val current = draft ?: return
+        if (pxPerMinute <= 0f) return
+
+        dragAccumPx += deltaPx
+        val deltaMinutes = (dragAccumPx / pxPerMinute).roundToLong()
+        val live = config.snapWhileDragging
+        val minDuration = config.minTaskDuration
+
+        draft = when (current.mode) {
+            DragMode.Move -> current.copy(
+                start = maybeSnap(current.originalStart.plusMinutes(deltaMinutes), live),
+                duration = current.originalDuration,
+            )
+
+            DragMode.ResizeEnd -> {
+                val end = maybeSnap(current.originalEnd.plusMinutes(deltaMinutes), live)
+                current.copy(
+                    start = current.originalStart,
+                    duration = Duration.between(current.originalStart, end)
+                        .coerceAtLeast(minDuration),
+                )
+            }
+
+            DragMode.ResizeStart -> {
+                // The far edge is pinned, so the duration absorbs the whole movement.
+                val end = current.originalEnd
+                var start = maybeSnap(current.originalStart.plusMinutes(deltaMinutes), live)
+                var duration = Duration.between(start, end)
+                if (duration < minDuration) {
+                    // Clamping beats snapping: the bar stops rather than inverting, even
+                    // though the resulting start may sit off-grid.
+                    duration = minDuration
+                    start = end.minus(minDuration)
+                }
+                current.copy(start = start, duration = duration)
+            }
+        }
+    }
+
+    /** Writes the draft back into [tasks] and ends the gesture. */
+    fun commitDrag() {
+        val current = draft ?: return
+        val index = tasks.indexOfFirst { it.id == current.taskId }
+        if (index >= 0) {
+            val interval = config.snapInterval
+            val minDuration = config.minTaskDuration
+            var start: LocalDateTime
+            var duration: Duration
+
+            // Snap unconditionally here: with snapWhileDragging off, this is the only snap.
+            when (current.mode) {
+                DragMode.Move -> {
+                    start = snapToGrid(origin, current.start, interval)
+                    duration = current.duration
+                }
+
+                DragMode.ResizeEnd -> {
+                    start = current.start
+                    val end = snapToGrid(origin, current.end, interval)
+                    duration = Duration.between(start, end).coerceAtLeast(minDuration)
+                }
+
+                DragMode.ResizeStart -> {
+                    val end = current.end
+                    start = snapToGrid(origin, current.start, interval)
+                    duration = Duration.between(start, end)
+                    if (duration < minDuration) {
+                        duration = minDuration
+                        start = end.minus(minDuration)
+                    }
+                }
+            }
+            tasks[index] = tasks[index].copy(start = start, duration = duration)
+        }
+        draft = null
+        dragAccumPx = 0f
+    }
+
+    /** Discards the draft; [tasks] is left exactly as it was. */
+    fun cancelDrag() {
+        draft = null
+        dragAccumPx = 0f
+    }
+
+    private fun maybeSnap(time: LocalDateTime, snapping: Boolean): LocalDateTime =
+        if (snapping) snapToGrid(origin, time, config.snapInterval) else time
 
     // --- scrolling -------------------------------------------------------------------
 
