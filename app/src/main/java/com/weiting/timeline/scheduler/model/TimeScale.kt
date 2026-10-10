@@ -54,7 +54,23 @@ enum class TimeScale(
         YEAR -> time.monthValue == 1
     }
 
-    /** Start of the window containing [time] — where "今天" parks the viewport. */
+    /**
+     * Where the viewport parks on launch and on "今天": a short lead-in before [now], so
+     * the current moment is always visible near the left edge.
+     *
+     * [windowStart] would be wrong for this — at the DAY scale it is midnight, which on
+     * launch would show an empty small hours and push every task off-screen to the right.
+     */
+    fun todayStart(now: LocalDateTime): LocalDateTime = floorToTick(
+        when (this) {
+            DAY -> now.minusHours(1)
+            WEEK -> now.minusDays(1)
+            MONTH -> now.minusDays(3)
+            YEAR -> now.minusMonths(1)
+        },
+    )
+
+    /** Start of the window containing [time] — used for the period label. */
     fun windowStart(time: LocalDateTime): LocalDateTime = when (this) {
         DAY -> time.truncatedTo(ChronoUnit.DAYS)
         WEEK -> time.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
