@@ -48,7 +48,7 @@ class TaskDragTest {
     @Test
     fun `move changes start and leaves duration untouched`() {
         val s = state()
-        s.beginDrag(task, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
         s.dragBy(60f, pxPerMinute) // +30 min
         s.commitDrag()
 
@@ -59,7 +59,7 @@ class TaskDragTest {
     @Test
     fun `move snaps to the grid`() {
         val s = state()
-        s.beginDrag(task, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
         s.dragBy(37f, pxPerMinute) // +18.5 min -> nearest 15-min line is +15
         s.commitDrag()
 
@@ -71,7 +71,7 @@ class TaskDragTest {
     @Test
     fun `a drag accumulates rather than resetting each frame`() {
         val s = state()
-        s.beginDrag(task, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
         repeat(6) { s.dragBy(10f, pxPerMinute) } // 60 px total -> +30 min
         s.commitDrag()
 
@@ -84,7 +84,7 @@ class TaskDragTest {
         // previous (snapped) draft instead of from the original plus the accumulated
         // travel, every frame would round back to zero and the bar would never move.
         val s = state(snapWhileDragging = true)
-        s.beginDrag(task, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
         repeat(10) { s.dragBy(6f, pxPerMinute) } // 10 x 3 min = +30 min
         s.commitDrag()
 
@@ -96,7 +96,7 @@ class TaskDragTest {
     @Test
     fun `resizing the right edge changes duration only`() {
         val s = state()
-        s.beginDrag(task, DragMode.ResizeEnd)
+        s.beginDrag(task.id, DragMode.ResizeEnd)
         s.dragBy(120f, pxPerMinute) // +60 min
         s.commitDrag()
 
@@ -108,7 +108,7 @@ class TaskDragTest {
     fun `resizing the left edge pins the end`() {
         val s = state()
         val originalEnd = task.end
-        s.beginDrag(task, DragMode.ResizeStart)
+        s.beginDrag(task.id, DragMode.ResizeStart)
         s.dragBy(-120f, pxPerMinute) // -60 min
         s.commitDrag()
 
@@ -120,7 +120,7 @@ class TaskDragTest {
     @Test
     fun `resizing the right edge past the start clamps instead of inverting`() {
         val s = state()
-        s.beginDrag(task, DragMode.ResizeEnd)
+        s.beginDrag(task.id, DragMode.ResizeEnd)
         s.dragBy(-10_000f, pxPerMinute) // far past the left edge
         s.commitDrag()
 
@@ -133,7 +133,7 @@ class TaskDragTest {
     fun `resizing the left edge past the end clamps and keeps the end pinned`() {
         val s = state()
         val originalEnd = task.end
-        s.beginDrag(task, DragMode.ResizeStart)
+        s.beginDrag(task.id, DragMode.ResizeStart)
         s.dragBy(10_000f, pxPerMinute)
         s.commitDrag()
 
@@ -148,7 +148,7 @@ class TaskDragTest {
             snapInterval = Duration.ofDays(1),
             minTaskDuration = Duration.ofMinutes(15),
         )
-        s.beginDrag(task, DragMode.ResizeEnd)
+        s.beginDrag(task.id, DragMode.ResizeEnd)
         s.dragBy(-10_000f, pxPerMinute)
         s.commitDrag()
 
@@ -160,7 +160,7 @@ class TaskDragTest {
     @Test
     fun `with live snapping off the draft tracks the finger exactly`() {
         val s = state(snapWhileDragging = false)
-        s.beginDrag(task, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
         s.dragBy(37f, pxPerMinute) // +18.5 min -> rounds to the nearest minute, not grid
 
         assertEquals(origin.plusHours(9).plusMinutes(19), s.draft?.start)
@@ -169,7 +169,7 @@ class TaskDragTest {
     @Test
     fun `with live snapping off the commit still lands on the grid`() {
         val s = state(snapWhileDragging = false)
-        s.beginDrag(task, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
         s.dragBy(37f, pxPerMinute)
         s.commitDrag()
 
@@ -179,7 +179,7 @@ class TaskDragTest {
     @Test
     fun `with live snapping on the draft is already on the grid`() {
         val s = state(snapWhileDragging = true)
-        s.beginDrag(task, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
         s.dragBy(37f, pxPerMinute)
 
         assertEquals(origin.plusHours(9).plusMinutes(15), s.draft?.start)
@@ -190,7 +190,7 @@ class TaskDragTest {
     @Test
     fun `cancelling a drag leaves the task untouched`() {
         val s = state()
-        s.beginDrag(task, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
         s.dragBy(600f, pxPerMinute)
         s.cancelDrag()
 
@@ -202,7 +202,7 @@ class TaskDragTest {
     @Test
     fun `the draft is cleared after a commit`() {
         val s = state()
-        s.beginDrag(task, DragMode.Move)
+        s.beginDrag(task.id, DragMode.Move)
         s.dragBy(60f, pxPerMinute)
         s.commitDrag()
 
@@ -220,13 +220,46 @@ class TaskDragTest {
     }
 
     @Test
-    fun `a second drag starts from the committed position`() {
+    fun `beginDrag resolves the task from the live list, so a stale reference cannot rewind`() {
+        // The bug this guards: a pointerInput block only restarts when its keys change,
+        // so a bar whose width did not change kept the Task captured at first composition
+        // and a second move rewound to the pre-edit time. beginDrag takes an id, so the
+        // caller has no Task to hold on to.
         val s = state()
-        s.beginDrag(task, DragMode.Move)
+        val staleTask = s.tasks[0]
+
+        s.beginDrag(staleTask.id, DragMode.Move)
+        s.dragBy(60f, pxPerMinute)
+        s.commitDrag()
+        val afterFirst = s.tasks[0].start
+
+        // Same id, deliberately passed from the pre-edit object.
+        s.beginDrag(staleTask.id, DragMode.Move)
+        assertEquals(afterFirst, s.draft?.originalStart)
         s.dragBy(60f, pxPerMinute)
         s.commitDrag()
 
-        s.beginDrag(s.tasks[0], DragMode.Move)
+        assertEquals(afterFirst.plusMinutes(30), s.tasks[0].start)
+        assertEquals(origin.plusHours(10), s.tasks[0].start)
+    }
+
+    @Test
+    fun `beginDrag with an unknown id is ignored`() {
+        val s = state()
+        s.beginDrag("nope", DragMode.Move)
+        assertNull(s.draft)
+        s.dragBy(600f, pxPerMinute)
+        assertEquals(task.start, s.tasks[0].start)
+    }
+
+    @Test
+    fun `a second drag starts from the committed position`() {
+        val s = state()
+        s.beginDrag(task.id, DragMode.Move)
+        s.dragBy(60f, pxPerMinute)
+        s.commitDrag()
+
+        s.beginDrag(task.id, DragMode.Move)
         s.dragBy(60f, pxPerMinute)
         s.commitDrag()
 

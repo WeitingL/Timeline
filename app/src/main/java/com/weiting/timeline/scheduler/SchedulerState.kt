@@ -49,6 +49,16 @@ class SchedulerState(
     private val minMinutes = Duration.between(origin, origin.minusYears(2)).toMinutes().toDouble()
     private val maxMinutes = Duration.between(origin, origin.plusYears(2)).toMinutes().toDouble()
 
+    /** Minutes from [origin], clamped to the scrollable range. */
+    private fun clampedMinutesOf(time: LocalDateTime): Double =
+        Duration.between(origin, time).toMinutes().toDouble().coerceIn(minMinutes, maxMinutes)
+
+    init {
+        // Park on launch where "今天" would, so the first frame shows the current moment
+        // rather than whatever happens to sit at the origin.
+        viewportStartMinutes = clampedMinutesOf(initialConfig.scale.todayStart(LocalDateTime.now()))
+    }
+
     val viewportStart: LocalDateTime get() = origin.plusMinutes(viewportStartMinutes.roundToLong())
 
     // --- configuration setters -------------------------------------------------------
@@ -85,7 +95,17 @@ class SchedulerState(
      */
     private var dragAccumPx = 0f
 
-    fun beginDrag(task: Task, mode: DragMode) {
+    /**
+     * Starts a gesture on the task with [taskId].
+     *
+     * Takes an id rather than a [Task] on purpose. A caller holding a Task can hold a
+     * *stale* one — a `pointerInput` block only restarts when its keys change, so a bar
+     * whose width did not change keeps the Task captured at its first composition, and a
+     * second drag would then rewind to the pre-edit time. Resolving from [tasks] here
+     * makes that bug unrepresentable rather than merely absent.
+     */
+    fun beginDrag(taskId: String, mode: DragMode) {
+        val task = tasks.firstOrNull { it.id == taskId } ?: return
         dragAccumPx = 0f
         draft = TaskDraft.of(task, mode)
     }
@@ -200,8 +220,7 @@ class SchedulerState(
 
     suspend fun animateViewportTo(target: LocalDateTime) {
         val from = viewportStartMinutes
-        val to = Duration.between(origin, target).toMinutes().toDouble()
-            .coerceIn(minMinutes, maxMinutes)
+        val to = clampedMinutesOf(target)
         animate(
             initialValue = 0f,
             targetValue = 1f,
@@ -211,8 +230,8 @@ class SchedulerState(
         }
     }
 
-    /** Parks the viewport at the start of the window containing now. */
-    suspend fun goToToday() = animateViewportTo(config.scale.windowStart(LocalDateTime.now()))
+    /** Parks the viewport so the current moment sits just inside the left edge. */
+    suspend fun goToToday() = animateViewportTo(config.scale.todayStart(LocalDateTime.now()))
 
     /** ◀ / ▶ — moves the viewport by exactly one unit of the current scale. */
     suspend fun stepBy(direction: Int) =
@@ -223,9 +242,7 @@ class SchedulerState(
 fun rememberSchedulerState(
     tasks: List<Task> = sampleTasks(),
     config: TimelineConfig = TimelineConfig(),
-): SchedulerState {
     // Origin = start of today, so positions stay small and precise around the data we care
-    // about, and "today" sits at exactly 0.
-    val origin = remember { LocalDate.now().atStartOfDay() }
-    return remember { SchedulerState(origin, tasks, config) }
-}
+    // about, and "today" sits at exactly 0. Overridable so previews can pin a date.
+    origin: LocalDateTime = LocalDate.now().atStartOfDay(),
+): SchedulerState = remember { SchedulerState(origin, tasks, config) }
