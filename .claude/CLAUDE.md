@@ -26,7 +26,11 @@ say what was decided.
 
 ### Gate 2 — the spec
 
-One file per piece of work: `ai-cowork/NNN-<slug>.md`, numbers increasing, never reused.
+One file per piece of work: `ai-cowork/NNN-<slug>.md`. Keep the numbers **contiguous**: if
+a spec is withdrawn before any code ships, renumber the ones after it so the folder reads
+1, 2, 3 with no gaps. (Superseding an earlier rule that said never to reuse a number — a
+gap turned out to look like a lost file, which is worse than a renumber.) Whenever a spec
+is renumbered, its visual doc, both writeups and every cross-reference move with it.
 
 Required sections, in this order:
 

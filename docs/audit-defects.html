@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>稽核找出的三個缺陷</title>
+<style>
+  :root{
+    color-scheme:light;
+    --ground:#F5F7FA; --surface:#FFFFFF; --surface-2:#EDF0F6; --surface-3:#E1E6F0;
+    --ink:#131722; --ink-2:#4C566A; --ink-3:#7A8498;
+    --rule:#DBE1EB; --rule-strong:#BDC5D5;
+    --accent:#3F6FE4; --accent-soft:#E7EDFC; --accent-ink:#2B55BC;
+    --ok:#0E9F8A; --ok-soft:#E0F4F0;
+    --warn:#C9741C; --warn-soft:#FBEEDC;
+    --bad:#D2495F; --bad-soft:#FBE7EA;
+    --idle-soft:#E9ECF3;
+    --bar-1:#3F6FE4; --bar-2:#0E9F8A; --bar-3:#E08A2E;
+    --bar-4:#8E5BD4; --bar-5:#D2495F; --bar-6:#2A9FB8;
+    --shadow:0 1px 2px rgba(19,23,34,.05), 0 10px 28px -20px rgba(19,23,34,.3);
+    --sans:system-ui,-apple-system,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    --serif:Georgia,"Songti TC","Times New Roman",serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      color-scheme:dark;
+      --ground:#0E1117; --surface:#161A22; --surface-2:#1D222C; --surface-3:#262C38;
+      --ink:#E7EAF1; --ink-2:#A4ADBE; --ink-3:#798395;
+      --rule:#262C38; --rule-strong:#3A4250;
+      --accent:#7D9CF2; --accent-soft:#1A2440; --accent-ink:#A6BCF8;
+      --ok:#34C3A8; --ok-soft:#102E2B;
+      --warn:#E3A054; --warn-soft:#33250F;
+      --bad:#E9697D; --bad-soft:#331A1F;
+      --idle-soft:#1F242F;
+      --bar-1:#5C85EC; --bar-2:#21B49C; --bar-3:#E89C48;
+      --bar-4:#A074E0; --bar-5:#DD6477; --bar-6:#3FB3CB;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -22px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --ground:#0E1117; --surface:#161A22; --surface-2:#1D222C; --surface-3:#262C38;
+    --ink:#E7EAF1; --ink-2:#A4ADBE; --ink-3:#798395;
+    --rule:#262C38; --rule-strong:#3A4250;
+    --accent:#7D9CF2; --accent-soft:#1A2440; --accent-ink:#A6BCF8;
+    --ok:#34C3A8; --ok-soft:#102E2B;
+    --warn:#E3A054; --warn-soft:#33250F;
+    --bad:#E9697D; --bad-soft:#331A1F;
+    --idle-soft:#1F242F;
+    --bar-1:#5C85EC; --bar-2:#21B49C; --bar-3:#E89C48;
+    --bar-4:#A074E0; --bar-5:#DD6477; --bar-6:#3FB3CB;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -22px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  img{max-width:100%}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:980px; margin:0 auto; padding-inline:20px; padding-block:36px 72px}
+
+  /* ---------- masthead ---------- */
+  .top{display:flex; align-items:flex-start; gap:16px}
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-3); display:flex; align-items:center; gap:10px;
+  }
+  .tickrule{
+    flex:1; min-width:30px; height:8px; border-bottom:1px solid var(--rule-strong);
+    background-image:repeating-linear-gradient(to right,var(--rule-strong) 0 1px,transparent 1px 12px);
+    background-position:bottom; background-repeat:repeat-x; background-size:12px 4px;
+  }
+  h1{font-family:var(--serif); font-weight:600; font-size:clamp(27px,5.6vw,40px); line-height:1.12; margin:12px 0 0; text-wrap:balance}
+  .standfirst{color:var(--ink-2); margin:12px 0 0; max-width:60ch; font-size:16px}
+  #tt{
+    flex:0 0 auto; margin-top:2px; background:var(--surface); color:var(--ink-2);
+    border:1px solid var(--rule-strong); border-radius:7px; padding:6px 11px;
+    font-family:var(--mono); font-size:11px; cursor:pointer;
+  }
+  #tt:hover{border-color:var(--accent); color:var(--accent-ink)}
+  #tt:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* ---------- sections ---------- */
+  section{margin-top:52px}
+  h2{font-family:var(--serif); font-weight:600; font-size:23px; margin:0 0 4px; display:flex; align-items:baseline; gap:11px}
+  h2 .num{font-family:var(--mono); font-size:12.5px; color:var(--accent)}
+  .lede{color:var(--ink-2); margin:0 0 4px; max-width:66ch; font-size:14.5px}
+  figure{margin:18px 0 0}
+  figcaption{font-size:12.5px; color:var(--ink-3); margin-top:9px; max-width:74ch}
+  figcaption code{font-size:11.5px}
+  code{font-family:var(--mono); font-size:.875em; background:var(--surface-2); border:1px solid var(--rule); border-radius:4px; padding:1px 5px}
+
+  .frame{background:var(--surface); border:1px solid var(--rule); border-radius:10px; padding:14px; box-shadow:var(--shadow)}
+  .scroller{overflow-x:auto}
+  .scroller svg{display:block; width:100%; min-width:620px; height:auto}
+  .duo{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px}
+  .duo .frame .scroller svg{min-width:0}
+
+  /* ---------- svg diagram tokens ---------- */
+  svg text{font-family:var(--sans)}
+  .t{fill:var(--ink); font-size:12px}
+  .tb{fill:var(--ink); font-size:12.5px; font-weight:600}
+  .t2{fill:var(--ink-2); font-size:11.5px}
+  .tm{fill:var(--ink); font-family:var(--mono); font-size:11px}
+  .tm2{fill:var(--ink-2); font-family:var(--mono); font-size:10.5px}
+  .lbl{fill:var(--ink-3); font-family:var(--mono); font-size:10px; letter-spacing:.07em}
+  .tw{fill:#fff; font-size:10.5px; font-weight:500}
+  .tok{fill:var(--ok); font-size:11.5px; font-weight:600}
+  .tbad{fill:var(--bad); font-size:11.5px; font-weight:600}
+  .tacc{fill:var(--accent-ink); font-family:var(--mono); font-size:10.5px}
+
+  .box{fill:var(--surface); stroke:var(--rule-strong); stroke-width:1}
+  .box2{fill:var(--surface-2); stroke:var(--rule); stroke-width:1}
+  .box3{fill:var(--surface-3); stroke:var(--rule); stroke-width:1}
+  .boxa{fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2}
+  .boxbad{fill:var(--bad-soft); stroke:var(--bad); stroke-width:1.2}
+  .boxdash{fill:none; stroke:var(--rule-strong); stroke-width:1.2; stroke-dasharray:5 4}
+  .boxadash{fill:var(--accent-soft); fill-opacity:.45; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:5 4}
+  .axis{stroke:var(--ink-2); stroke-width:1.5; fill:none}
+  .tick{stroke:var(--rule-strong); stroke-width:1}
+  .gridl{stroke:var(--rule-strong); stroke-width:1; stroke-dasharray:3 4}
+  .guide{stroke:var(--accent); stroke-width:1; stroke-dasharray:3 4; opacity:.6}
+  .dim{stroke:var(--accent); stroke-width:1.2; fill:none}
+  .flow{stroke:var(--ink-2); stroke-width:1.4; fill:none}
+  .flowdash{stroke:var(--ink-3); stroke-width:1.2; fill:none; stroke-dasharray:5 4}
+  .flowbad{stroke:var(--bad); stroke-width:1.4; fill:none}
+  .bc1{fill:var(--bar-1)} .bc2{fill:var(--bar-2)} .bc3{fill:var(--bar-3)}
+  .bc4{fill:var(--bar-4)} .bc5{fill:var(--bar-5)} .bc6{fill:var(--bar-6)}
+  #arr path{fill:var(--ink-2)} #arrA path{fill:var(--accent)} #arrB path{fill:var(--bad)}
+
+  /* ---------- screen mock ---------- */
+  .mock{border:1px solid var(--rule-strong); border-radius:10px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow); font-size:11px}
+  .mc{padding:9px 11px; border-bottom:1px solid var(--rule); display:flex; flex-direction:column; gap:7px}
+  .mr{display:flex; align-items:center; gap:5px; flex-wrap:wrap}
+  .chip{border:1px solid var(--rule-strong); border-radius:99px; padding:2.5px 11px; color:var(--ink-2); white-space:nowrap}
+  .chip.on{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); font-weight:600}
+  .sp{flex:1 1 auto; min-width:4px}
+  .nav{color:var(--accent-ink); padding:2px 8px; font-weight:600}
+  .md{font-family:var(--mono); font-weight:600; font-size:12px}
+  .zw{display:flex; align-items:center; gap:6px; color:var(--ink-3)}
+  .zoom{width:66px; height:3px; background:var(--surface-3); border-radius:99px; position:relative}
+  .zoom::before{content:""; position:absolute; inset:0 66% 0 0; background:var(--accent); border-radius:99px}
+  .zoom::after{content:""; position:absolute; left:34%; top:-3.5px; width:10px; height:10px; border-radius:50%; background:var(--accent)}
+  .mg{display:grid; grid-template-columns:100px 1fr}
+  .mcorner{border-right:1px solid var(--rule-strong); border-bottom:1px solid var(--rule)}
+  .maxis{border-bottom:1px solid var(--rule); display:flex; position:relative; height:32px}
+  .tk{flex:1 1 0; min-width:0; border-left:1px solid var(--rule); font-family:var(--mono); font-size:9.5px; color:var(--ink-3); padding:3px 0 0 4px; overflow:hidden; white-space:nowrap}
+  .tk.maj{border-left:1.5px solid var(--rule-strong); color:var(--ink-2); font-weight:600}
+  .mlabels{border-right:1px solid var(--rule-strong)}
+  .lab{height:40px; padding:0 9px; display:flex; flex-direction:column; justify-content:center; overflow:hidden}
+  .lab b{font-size:11px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .lab span{font-family:var(--mono); font-size:9px; color:var(--ink-3)}
+  .mlanes{position:relative}
+  .lane{height:40px; position:relative}
+  .lane::before{content:""; position:absolute; inset:0; background-image:repeating-linear-gradient(to right,var(--rule) 0 1px,transparent 1px 11.111%); opacity:.8}
+  .bar{position:absolute; top:8px; height:24px; border-radius:5px; display:flex; align-items:center; padding:0 6px; color:#fff; font-size:10px; font-weight:600; white-space:nowrap; overflow:hidden; min-width:10px}
+  .now{position:absolute; top:0; bottom:0; width:1.5px; background:var(--bad); opacity:.8}
+  .now.ax::after{content:""; position:absolute; bottom:-3px; left:-2.25px; width:6px; height:6px; border-radius:50%; background:var(--bad)}
+
+  /* ---------- scoreboard ---------- */
+  .score{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:9px; margin-top:18px}
+  .sc{background:var(--surface); border:1px solid var(--rule); border-left-width:3px; border-radius:7px; padding:10px 12px}
+  .sc.d{border-left-color:var(--ok)} .sc.p{border-left-color:var(--warn)} .sc.t{border-left-color:var(--rule-strong)}
+  .sc b{display:block; font-size:13px; font-weight:600}
+  .sc span{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase}
+  .sc.d span{color:var(--ok)} .sc.p span{color:var(--warn)} .sc.t span{color:var(--ink-3)}
+  .sc em{display:block; font-family:var(--mono); font-style:normal; font-size:10.5px; color:var(--ink-3); margin-top:3px}
+
+  .note{margin-top:22px; background:var(--warn-soft); border:1px solid var(--warn); border-radius:9px; padding:13px 15px; font-size:13.5px}
+  .note b{color:var(--warn)}
+  footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-3)}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style><style>
+  /* additions for the gesture diagrams */
+  .pin{fill:var(--ink-2)}
+  .divider{stroke:#fff; stroke-width:1; opacity:.55}
+  .grip{fill:#fff; opacity:.6}
+  .leader{stroke:var(--rule-strong); stroke-width:1}
+  .crossout{stroke:var(--bad); stroke-width:1.6; fill:none}
+  .seriesok{stroke:var(--accent); stroke-width:2; fill:none}
+  .seriesbad{stroke:var(--bad); stroke-width:2; fill:none}
+  .seriesraw{stroke:var(--ink-3); stroke-width:1.4; fill:none; stroke-dasharray:4 3}
+  .seriesraw2{stroke:var(--ink-2); stroke-width:1.6; fill:none; stroke-dasharray:5 4}
+  .dotok circle,.dotok2{fill:var(--accent)}
+  .dotbad circle{fill:var(--bad)}
+  .dotraw{fill:var(--ink-2)}
+  .phase{display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--ink-3); margin-bottom:5px}
+  /* table (intent map) */
+  .tablewrap{overflow-x:auto; margin-top:20px; border:1px solid var(--rule);
+    border-radius:9px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:470px}
+  th,td{text-align:left; padding:9px 14px; border-bottom:1px solid var(--rule); vertical-align:top}
+  thead th{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-3); font-weight:500; background:var(--surface-2); white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  td b{font-weight:600; color:var(--ink)}
+  /* grouped list (preview inventory) */
+  .files{margin-top:20px; border:1px solid var(--rule); border-radius:9px;
+    overflow:hidden; background:var(--surface)}
+  .fgroup{font-family:var(--mono); font-size:11px; color:var(--ink-3);
+    background:var(--surface-2); padding:7px 14px; border-bottom:1px solid var(--rule)}
+  .frow{display:grid; grid-template-columns:minmax(0,78px) 1fr; gap:4px 18px;
+    padding:10px 14px; border-bottom:1px solid var(--rule)}
+  .frow:last-child{border-bottom:0}
+  .frow .f{font-family:var(--mono); font-size:12.5px; font-weight:600}
+  .frow .r{font-size:13px; color:var(--ink-2)}
+  @media (max-width:560px){ .frow{grid-template-columns:1fr} }
+  .editframe{fill:none; stroke:#fff; stroke-opacity:.95; stroke-width:2}
+  .buffer{fill:var(--accent); fill-opacity:.1; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3}
+  .wash{fill:#fff; opacity:.24}
+  .washsoft{fill:#fff; opacity:.13}
+  .griplit{fill:#fff; opacity:.95}
+  .card h3{font-size:14.5px; margin-top:2px}
+  .cards.three{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+</style><style>
+  /* diagram additions */
+  .boxwarn{fill:var(--warn-soft); stroke:var(--warn); stroke-width:1.1}
+  .twarn{fill:var(--warn); font-size:11.5px; font-weight:600}
+  .nowline2{stroke:var(--bad); stroke-width:2}
+  #arrW path{fill:var(--warn)}
+  td .sc{display:inline-block; margin:0; border-radius:5px; background:var(--surface)}
+  td .sc span{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase}
+  .frow .f, td.fn{font-family:var(--mono); font-size:11.5px; line-height:1.5; white-space:nowrap}
+  .cards.three{grid-template-columns:repeat(auto-fit,minmax(245px,1fr))}
+  .pagenav{display:flex; flex-wrap:wrap; gap:6px; margin-top:14px}
+  .pagenav a{font-family:var(--mono); font-size:12px; text-decoration:none;
+    border:1px solid var(--rule-strong); border-radius:99px; padding:3px 11px; color:var(--ink-2)}
+  .pagenav a:hover{border-color:var(--accent); color:var(--accent-ink)}
+  .pagenav a b{color:var(--accent); font-weight:600; margin-right:4px}
+  .pagenav a[aria-current="page"]{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink)}
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arr"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+  <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+  <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+</defs></svg>
+
+<div class="page">
+
+<header>
+  <div class="top">
+    <div style="flex:1; min-width:0">
+      <div class="eyebrow"><span>Spec 003</span><span class="tickrule"></span><span>已實作 · 56 項測試</span></div>
+      <h1>稽核找出的三個缺陷</h1>
+      <p class="standfirst">三個缺陷的共同點比它們本身更值得記：<strong>沒有一個是用 app 用出來的</strong>。兩個唯讀 subagent 拿文件去對照程式碼與 git history，它們被交代的任務是「檢查文件是否還正確」，不是找 bug。三個都已修復；最關鍵的那一項仍未實測驗證。</p>
+      <span class="pagenav"><a href="architecture.html">框架總覽</a><a href="gesture-layer.html"><b>001</b> 手勢層</a><a href="edit-lock.html"><b>002</b> 編輯鎖定</a><a href="audit-defects.html" aria-current="page"><b>003</b> 稽核缺陷</a></span>
+    </div>
+    <button id="tt" type="button">主題</button>
+  </div>
+  <div class="note" style="margin-top:24px; background:var(--bad-soft); border-color:var(--bad)">
+    <b>缺陷 2 與 3 是舊識。</b>它們是一份<strong>寫完就被撤回</strong>的效能 spec 的發現，而那份 spec 的 commit 訊息把第一個明確歸類為「a correctness bug, not a cost」。撤掉 spec 等於讓它們出貨。這是這一輪最該記下來的部分。
+  </div>
+</header>
+
+<section>
+  <h2><span class="num">01</span>稽核文件，結果掉出程式碼的 bug</h2>
+  <p class="lede">這個方向跟預期相反 —— 本來是要檢查文件有沒有過期。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 300" role="img" aria-label="兩個稽核 agent 的資訊流與產出">
+    <rect x="20" y="40" width="200" height="60" rx="6" class="box"/>
+    <text x="120" y="64" class="tb" text-anchor="middle">文件</text>
+    <text x="120" y="82" class="lbl" text-anchor="middle">SPEC · HTML · WRITEUP</text>
+    <text x="120" y="118" class="t2" text-anchor="middle">帶著可查證的宣稱</text>
+    <text x="120" y="134" class="t2" text-anchor="middle">與 file.kt:line</text>
+
+    <path d="M224,58 L286,52" class="flow" marker-end="url(#arr)"/>
+    <path d="M224,82 L286,96" class="flow" marker-end="url(#arr)"/>
+
+    <rect x="290" y="28" width="210" height="48" rx="6" class="boxa"/>
+    <text x="395" y="48" class="tb" text-anchor="middle">Agent A</text>
+    <text x="395" y="64" class="lbl" text-anchor="middle">對照 原始碼</text>
+    <rect x="290" y="88" width="210" height="48" rx="6" class="boxa"/>
+    <text x="395" y="108" class="tb" text-anchor="middle">Agent B</text>
+    <text x="395" y="124" class="lbl" text-anchor="middle">對照 GIT HISTORY</text>
+    <text x="395" y="160" class="t2" text-anchor="middle">任務：「這些文件還正確嗎？」</text>
+    <text x="395" y="176" class="lbl" text-anchor="middle">不是「去找 BUG」</text>
+
+    <path d="M504,52 L566,52" class="flowbad" marker-end="url(#arrB)"/>
+    <path d="M504,112 L566,112" class="flowbad" marker-end="url(#arrB)"/>
+
+    <rect x="570" y="28" width="310" height="48" rx="6" class="boxbad"/>
+    <text x="725" y="48" class="tb" text-anchor="middle">一條被寫下的承諾被原始碼否證</text>
+    <text x="725" y="64" class="lbl" text-anchor="middle">→ 缺陷 1：活著的回歸</text>
+    <rect x="570" y="88" width="310" height="48" rx="6" class="boxbad"/>
+    <text x="725" y="108" class="tb" text-anchor="middle">writeup 的「妥協」清單漏了兩項</text>
+    <text x="725" y="124" class="lbl" text-anchor="middle">→ 缺陷 2、3：已出貨的 bug</text>
+
+    <line x1="20" y1="206" x2="880" y2="206" class="tick"/>
+    <text x="20" y="232" class="tok">✓ 為什麼這招有效</text>
+    <text x="20" y="254" class="t2">因為文件裡的宣稱是<b>具體、可被否證</b>的 —— 有行號、有常數、有「每 frame 配置幾個物件」。</text>
+    <text x="20" y="272" class="t2">一份寫得含糊的文件沒有東西可以被推翻，稽核它也就不會掉出任何東西。</text>
+    <text x="20" y="292" class="twarn">△ 兩份報告我沒有照單全收：34 項發現裡有 1 項是錯的（它說「18 個 Kotlin 檔」對不上任何計數，但 app/src/main 正好 18 個 —— 它漏數了 theme 的三個檔）。</text>
+  </svg>
+  </div></figure>
+  <figcaption>這一節之所以放在最前面，是因為「稽核文件」在這個專案裡已經變成一種獨立的 review 手段 —— 和單元測試、實機測試、worktree 編譯檢查並列。它抓到的是另外三種都看不到的那一類問題：<strong>程式碼與它自己的文件之間的分歧</strong>。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">02</span>缺陷 1：一行引數，讓每條 lane 每 frame 重組</h2>
+  <p class="lede">它牴觸 <code>.claude/CLAUDE.md:124</code> 的架構承諾 —— 而兩份 writeup 都把那條承諾當成「這個專案做對的事」來列。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 330" role="img" aria-label="三個讀取點各自落在哪個階段">
+    <text x="20" y="24" class="lbl">TASKLANE 裡的三個 viewportStartMinutes 讀取點</text>
+
+    <rect x="20" y="40" width="860" height="68" rx="6" class="boxbad"/>
+    <text x="36" y="62" class="tm">:173  laneOriginX = axis.xOf(start, state.viewportStartMinutes)</text>
+    <text x="36" y="82" class="t2">在 <tspan class="tm2">rememberUpdatedState(…)</tspan> 的引數位置 → composition 階段求值</text>
+    <text x="36" y="100" class="tbad">→ 每 frame 讓這條 lane 失效。六筆任務 = 每 frame 六次重組。</text>
+
+    <rect x="20" y="122" width="860" height="48" rx="6" class="boxa"/>
+    <text x="36" y="144" class="tm">:206  .offset { IntOffset(axis.xOf(start, state.viewportStartMinutes)…) }</text>
+    <text x="36" y="162" class="tok">lambda → layout 階段。正確，只重新定位。</text>
+
+    <rect x="20" y="184" width="860" height="48" rx="6" class="boxa"/>
+    <text x="36" y="206" class="tm">:111  modifier.drawBehind { val viewportStart = state.viewportStartMinutes … }</text>
+    <text x="36" y="224" class="tok">draw 階段。正確，只重繪。</text>
+
+    <line x1="20" y1="252" x2="880" y2="252" class="tick"/>
+    <text x="20" y="276" class="twarn">註解自我否證</text>
+    <text x="20" y="298" class="t2"><tspan class="tm2">:166-168</tspan> 寫著「它必須每 frame 重新讀取，而不是在 composition 捕捉」。</text>
+    <text x="20" y="316" class="t2">它<b>就是</b>在 composition 捕捉的 —— 而它之所以還能保持新鮮，純粹是因為那個不該發生的重組。</text>
+  </svg>
+  </div></figure>
+  <figcaption>回歸是跟著 spec 002 的 <code>LaneMetrics</code> 持有者一起進來的。諷刺的地方在於：<code>LaneMetrics</code> 本身是為了修掉另一個 bug（手勢在 resize 時自我取消）而引入的 —— 修一個 Compose 生命週期問題的同時製造了另一個。<br><br>修法：把 <code>laneOriginX</code> 從 holder 拿掉，改在拖曳迴圈裡算。<code>pointerInput</code> 的 suspend block 不是觀察範圍，在那裡讀 snapshot state 不會訂閱任何東西。而且那個值其實<strong>更正確</strong> —— 它讀的是「這個指標事件當下」的視窗與 draft，而不是「上一次組合時」的。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">03</span>缺陷 2：紅線在重繪之間是凍結的</h2>
+  <p class="lede"><code>LocalDateTime.now()</code> 寫在兩個 draw lambda 裡（<code>TimelineHeader.kt:114</code>、<code>TimelineContent.kt:471</code>），所以時鐘只在「別的東西觸發重繪」時才被取樣。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 220" role="img" aria-label="now 標記在閒置時凍結">
+    <text x="20" y="28" class="lbl">真實時間</text>
+    <line x1="150" y1="54" x2="860" y2="54" class="axis" marker-end="url(#arr)"/>
+    <g class="tick"><line x1="170" y1="48" x2="170" y2="60"/><line x1="340" y1="48" x2="340" y2="60"/><line x1="510" y1="48" x2="510" y2="60"/><line x1="680" y1="48" x2="680" y2="60"/></g>
+    <text x="170" y="42" class="tm2" text-anchor="middle">14:00</text>
+    <text x="340" y="42" class="tm2" text-anchor="middle">14:05</text>
+    <text x="510" y="42" class="tm2" text-anchor="middle">14:10</text>
+    <text x="680" y="42" class="tm2" text-anchor="middle">14:15</text>
+
+    <text x="20" y="100" class="lbl">重繪事件</text>
+    <circle cx="170" cy="94" r="6" class="dotok2"/>
+    <text x="182" y="98" class="tm2">最後一次捲動</text>
+    <rect x="186" y="82" width="674" height="24" rx="5" class="box2"/>
+    <text x="523" y="99" class="t2" text-anchor="middle">閒置 — 沒有任何東西觸發重繪</text>
+
+    <text x="20" y="148" class="lbl">畫面上的紅線</text>
+    <line x1="170" y1="126" x2="170" y2="172" class="nowline2"/>
+    <text x="182" y="146" class="tbad">停在 14:00</text>
+    <line x1="680" y1="126" x2="680" y2="172" class="guide"/>
+    <text x="692" y="146" class="tm2">應該在這裡</text>
+    <line x1="170" y1="190" x2="680" y2="190" class="flowbad" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+    <text x="425" y="210" class="tbad" text-anchor="middle">誤差持續擴大，而且無聲</text>
+  </svg>
+  </div></figure>
+  <figcaption>修法把 <code>now</code> 提升成 <code>produceState</code>，在<strong>分鐘邊界</strong>上 tick（而不是每 60000ms，否則它會從啟動的那個瞬間開始漂），再當參數傳進兩個 canvas。<br><br>注意這個讀取<strong>就是</strong>在 composition 階段，而且應該在：它一分鐘變一次，所以成本是一分鐘一次重組。它無法被延後到 draw 階段 —— 那正是現在這個 bug。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">04</span>缺陷 3：預設參數每次重組都配置一份示範資料</h2>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 190" role="img" aria-label="預設參數每次重組都被求值">
+    <rect x="20" y="36" width="400" height="26" rx="4" class="boxbad"/>
+    <text x="34" y="54" class="tm">tasks: List&lt;Task&gt; = sampleTasks()</text>
+    <text x="430" y="54" class="tm2">SchedulerState.kt:354</text>
+
+    <path d="M120,68 L120,96" class="flowbad" marker-end="url(#arrB)"/>
+    <rect x="20" y="100" width="190" height="44" rx="5" class="boxbad"/>
+    <text x="115" y="120" class="tm2" text-anchor="middle">每次重組求值</text>
+    <text x="115" y="136" class="lbl" text-anchor="middle">6 個 TASK + 1 個 LIST</text>
+
+    <path d="M214,122 L266,122" class="flowbad" marker-end="url(#arrB)"/>
+    <rect x="270" y="100" width="190" height="44" rx="5" class="box2"/>
+    <text x="365" y="120" class="tm2" text-anchor="middle">remember { } 忽略它</text>
+    <text x="365" y="136" class="lbl" text-anchor="middle">只用第一次的計算</text>
+
+    <path d="M464,122 L516,122" class="flowbad" marker-end="url(#arrB)"/>
+    <rect x="520" y="100" width="150" height="44" rx="5" class="boxbad"/>
+    <text x="595" y="127" class="tm2" text-anchor="middle">立刻丟掉</text>
+
+    <text x="700" y="118" class="t2">純浪費，不影響行為。</text>
+    <text x="700" y="136" class="t2">目前與缺陷 1 相乘。</text>
+
+    <text x="20" y="178" class="t2">修法：改成 <tspan class="tm2">tasks: () -&gt; List&lt;Task&gt; = ::sampleTasks</tspan>，在 <tspan class="tm2">remember</tspan> 內部才呼叫。兩個呼叫端都在 preview 檔裡。</text>
+  </svg>
+  </div></figure>
+  <figcaption>這一項單獨看無關緊要，但它跟缺陷 1 的關係值得注意：缺陷 1 讓重組變成每 frame 發生，於是這個「每次重組一次」的浪費也變成了每 frame 一次。兩個缺陷互相放大。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">05</span>這次沒有單元測試能守住的那一項</h2>
+  <p class="lede">缺陷 1 是 Compose 的階段性質，JVM 單元測試看不到 —— 跟 spec 001 那個 stale <code>Task</code> 同一個盲區。</p>
+  <figure class="frame"><div class="scroller">
+  <svg viewBox="0 0 900 240" role="img" aria-label="三類 bug 與能抓到它們的手段">
+    <text x="20" y="26" class="lbl">缺陷</text>
+    <text x="330" y="26" class="lbl">JVM 單元測試</text>
+    <text x="500" y="26" class="lbl">實機</text>
+    <text x="640" y="26" class="lbl">稽核文件</text>
+    <text x="780" y="26" class="lbl">需要的手段</text>
+
+    <rect x="20" y="40" width="860" height="44" rx="5" class="box2"/>
+    <text x="34" y="60" class="tm2">1 · lane 每 frame 重組</text>
+    <text x="34" y="76" class="lbl">COMPOSE 階段性質</text>
+    <text x="355" y="68" class="tbad">✗</text><text x="515" y="68" class="tbad">✗</text><text x="660" y="68" class="tok">✓</text>
+    <text x="700" y="68" class="tm2">Layout Inspector 重組計數</text>
+
+    <rect x="20" y="96" width="860" height="44" rx="5" class="box2"/>
+    <text x="34" y="116" class="tm2">2 · 紅線凍結</text>
+    <text x="34" y="132" class="lbl">只在閒置時可見</text>
+    <text x="355" y="124" class="twarn">△</text><text x="515" y="124" class="twarn">△</text><text x="660" y="124" class="tok">✓</text>
+    <text x="700" y="124" class="tm2">可測（傳入固定 now）</text>
+
+    <rect x="20" y="152" width="860" height="44" rx="5" class="box2"/>
+    <text x="34" y="172" class="tm2">3 · 預設參數配置</text>
+    <text x="34" y="188" class="lbl">不影響行為</text>
+    <text x="355" y="180" class="tok">✓</text><text x="515" y="180" class="tbad">✗</text><text x="660" y="180" class="tok">✓</text>
+    <text x="700" y="180" class="tm2">可測（計數 lambda）</text>
+
+    <text x="20" y="226" class="t2">缺陷 2 的 △：理論上實機看得到，但要「開著不動好幾分鐘又正好注意到紅線」—— 實際上五個月也不會發現。</text>
+  </svg>
+  </div></figure>
+  <figcaption>缺陷 1 要真正守住需要 instrumented test 加 <code>ComposeTestRule</code> 與重組計數 —— 那是新的依賴、新的 source set，為了一個斷言。spec 的 Questions 第 3 題在問這值不值得；它已經發生過一次，所以我傾向加，但那是 spec 004 的工作量，不是這一份的。</figcaption>
+</section>
+
+<section>
+  <h2><span class="num">06</span>已確認的決定</h2>
+  <div class="cards three">
+    <div class="card"><span class="phase">1 · 背景</span><h3>離開畫面就不 tick</h3><p><code>produceState</code> 的 coroutine 綁在 composition 上 —— 看得見時永遠正確，看不見時不做事。不加 <code>LifecycleResumeEffect</code>。</p></div>
+    <div class="card"><span class="phase">2 · 間隔</span><h3>固定一分鐘</h3><p>日刻度下一分鐘約 1dp，與紅線的視覺精度相符。綁 <code>pxPerMinute</code> 會精確但過度工程。</p></div>
+    <div class="card"><span class="phase">3 · 護欄</span><h3>不加測試，風險已接受</h3><p>需要 instrumented test + 重組計數，代價是新依賴與新 source set。<b>後果寫在 spec 裡而非默默略過：這一類回歸對 CI 永遠隱形。</b></p></div>
+    <div class="card"><span class="phase">4 · 剩下的</span><h3>寫成 spec 004，不實作</h3><p>剩餘四項算繪優化寫成文件並標記 parked，讓「我們看過、決定不做」是找得到的，而不是用沉默暗示。</p></div>
+  </div>
+  <div class="note" style="margin-top:22px; background:var(--ok-soft); border-color:var(--ok)">
+    <b>三個缺陷已修，56 項測試（原 51），零警告。</b>缺陷 1 的 <code>laneOriginX</code> 移進拖曳迴圈；缺陷 2 新增 <code>NowTicker.kt</code> 並把 <code>now</code> 當參數傳進兩個 canvas；缺陷 3 預設參數改成 lambda。
+  </div>
+  <div class="note" style="margin-top:14px; background:var(--warn-soft); border-color:var(--warn)">
+    <b>最重要的那一項仍未驗證。</b>「lane 不再於捲動時重組」需要 Layout Inspector。改動在建構上是對的（讀取已移出 composition），但「在建構上是對的」正是 spec 001 對指標分派所相信的事，而那是錯的。在有人真的看過計數器之前，它算未驗證。
+  </div>
+</section>
+
+<footer>
+  規格：<code>ai-cowork/003-audit-defects.md</code> · 基準 <code>11518d0</code> · 所有行號對照工作區查證過 · 缺陷 2、3 的原始發現在撤回的 spec 裡（<code>2e0304b</code>）。
+</footer>
+
+</div>
+
+<script>
+  (function () {
+    var btn = document.getElementById('tt');
+    var root = document.documentElement;
+    try {
+      var saved = localStorage.getItem('tl-theme');
+      if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+    } catch (e) {}
+    btn.addEventListener('click', function () {
+      var dark = getComputedStyle(root).colorScheme.indexOf('dark') !== -1;
+      var next = dark ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('tl-theme', next); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>

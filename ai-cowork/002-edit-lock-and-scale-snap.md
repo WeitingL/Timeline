@@ -1,4 +1,4 @@
-# Spec 003 — Edit lock, scale-derived snapping, centred on now
+# Spec 002 — Edit lock, scale-derived snapping, centred on now
 
 - **Status:** implemented and verified on device, 2026-10-10
 - **Date:** 2026-10-10
@@ -25,8 +25,8 @@ scale instead of standing apart from it. Four changes:
    instead of near the left edge.
 
 Not in scope: persistent selection (an edit lasts exactly one touch), vertical reordering,
-and render-path performance. (A spec for the latter was drafted and withdrawn; its audit is
-in commit `2e0304b` if it is ever wanted. Number 002 stays retired.)
+and render-path performance. A spec for the latter was drafted and withdrawn before any
+code; its audit survives in commit `2e0304b` if it is ever wanted.
 
 ---
 
@@ -401,7 +401,7 @@ build, no warnings.
 ### What the device disproved
 
 **Child-first pointer dispatch does not, on its own, let a bar win a horizontal gesture.**
-Specs 001 and 003 both asserted it and both flagged it as unverifiable without hardware.
+Specs 001 and 002 both asserted it and both flagged it as unverifiable without hardware.
 It failed: dragging a bar panned the whole timeline.
 
 The cause was not Compose's dispatch order but a one-event hole in the implementation. The

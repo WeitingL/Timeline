@@ -174,6 +174,12 @@
   .note b{color:var(--warn)}
   footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-3)}
   @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+  .pagenav{display:flex; flex-wrap:wrap; gap:6px; margin-top:14px}
+  .pagenav a{font-family:var(--mono); font-size:12px; text-decoration:none;
+    border:1px solid var(--rule-strong); border-radius:99px; padding:3px 11px; color:var(--ink-2)}
+  .pagenav a:hover{border-color:var(--accent); color:var(--accent-ink)}
+  .pagenav a b{color:var(--accent); font-weight:600; margin-right:4px}
+  .pagenav a[aria-current="page"]{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink)}
 </style>
 </head>
 <body>
@@ -189,10 +195,10 @@
 <header>
   <div class="top">
     <div style="flex:1; min-width:0">
-      <div class="eyebrow"><span>Jetpack Compose</span><span class="tickrule"></span><span>2026-10-10</span></div>
+      <div class="eyebrow"><span>Scaffold · 無 spec</span><span class="tickrule"></span><span>2026-10-10</span></div>
       <h1>Timeline Scheduler<br>框架與實作原理</h1>
       <p class="standfirst">手刻的 Gantt 排程視圖。座標層、同步捲動的時間軸、任務 bar 的定位與渲染。以下七張圖是整個框架的全貌。</p>
-      <p style="margin:14px 0 0">手勢層（拖曳、resize、吸附）另有一頁：<a href="gesture-layer.html">手勢層</a> · <a href="edit-lock.html">編輯鎖定</a></p>
+      <span class="pagenav"><a href="architecture.html" aria-current="page">框架總覽</a><a href="gesture-layer.html"><b>001</b> 手勢層</a><a href="edit-lock.html"><b>002</b> 編輯鎖定</a><a href="audit-defects.html"><b>003</b> 稽核缺陷</a></span>
     </div>
     <button id="tt" type="button">主題</button>
   </div>

@@ -227,6 +227,12 @@
   td .sc span{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase}
   .frow .f, td.fn{font-family:var(--mono); font-size:11.5px; line-height:1.5; white-space:nowrap}
   .cards.three{grid-template-columns:repeat(auto-fit,minmax(245px,1fr))}
+  .pagenav{display:flex; flex-wrap:wrap; gap:6px; margin-top:14px}
+  .pagenav a{font-family:var(--mono); font-size:12px; text-decoration:none;
+    border:1px solid var(--rule-strong); border-radius:99px; padding:3px 11px; color:var(--ink-2)}
+  .pagenav a:hover{border-color:var(--accent); color:var(--accent-ink)}
+  .pagenav a b{color:var(--accent); font-weight:600; margin-right:4px}
+  .pagenav a[aria-current="page"]{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink)}
 </style></head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -240,10 +246,10 @@
 <header>
   <div class="top">
     <div style="flex:1; min-width:0">
-      <div class="eyebrow"><span>Spec 003</span><span class="tickrule"></span><span>已實作 · 51 項測試</span></div>
+      <div class="eyebrow"><span>Spec 002</span><span class="tickrule"></span><span>已實作 · 51 項測試</span></div>
       <h1>編輯鎖定<br>依刻度吸附 · 置中於現在</h1>
       <p class="standfirst">修正水平平移與編輯互相干擾的方式。四項改動：吸附跟著刻度走、一次觸碰就是一段完整的編輯、編輯時拖到邊緣會讓出空間、紅線落在畫面正中。已實作並通過實機驗證；過程中推翻了一個先前的推論、修掉兩個實機才現形的缺陷。</p>
-      <p style="margin:14px 0 0"><a href="architecture.html">框架總覽</a> · <a href="gesture-layer.html">手勢層</a></p>
+      <span class="pagenav"><a href="architecture.html">框架總覽</a><a href="gesture-layer.html"><b>001</b> 手勢層</a><a href="edit-lock.html" aria-current="page"><b>002</b> 編輯鎖定</a><a href="audit-defects.html"><b>003</b> 稽核缺陷</a></span>
     </div>
     <button id="tt" type="button">主題</button>
   </div>
@@ -404,7 +410,7 @@
     <text x="20" y="290" class="t2">兩者用同一個 touchSlop、累積同一個 x 位移，所以<b>同時</b>跨越門檻。一個未消耗的事件就足以把手勢交出去。</text>
   </svg>
   </div></figure>
-  <figcaption>這是本輪實機測試推翻的第一件事。spec 001 與 003 都寫過「子層優先分派，所以 bar 一定贏」並列為「只有實機能確認」 — <strong>它不成立</strong>，而原因不在 Compose 的分派規則，在這一個沒被消耗的事件。<br><br>修法用了兩層：在跨越的事件就 <code>consume()</code>（治根因），以及 <code>scrollable(enabled = !state.isEditing)</code>（從 touch-down 就停用父層，不再依賴消耗的時序）。第二層是必要的 — 若按下與跨越落在同一 frame，重組來不及讓第一層生效。</figcaption>
+  <figcaption>這是本輪實機測試推翻的第一件事。spec 001 與 002 都寫過「子層優先分派，所以 bar 一定贏」並列為「只有實機能確認」 — <strong>它不成立</strong>，而原因不在 Compose 的分派規則，在這一個沒被消耗的事件。<br><br>修法用了兩層：在跨越的事件就 <code>consume()</code>（治根因），以及 <code>scrollable(enabled = !state.isEditing)</code>（從 touch-down 就停用父層，不再依賴消耗的時序）。第二層是必要的 — 若按下與跨越落在同一 frame，重組來不及讓第一層生效。</figcaption>
 </section>
 
 <section>
@@ -631,7 +637,7 @@
 </section>
 
 <footer>
-  規格：<code>ai-cowork/003-edit-lock-and-scale-snap.md</code> · 基準 <code>v0.2.0</code> · 所有行號對照實際程式碼查證過
+  規格：<code>ai-cowork/002-edit-lock-and-scale-snap.md</code> · 基準 <code>v0.2.0</code> · 所有行號對照實際程式碼查證過
 </footer>
 
 </div>
