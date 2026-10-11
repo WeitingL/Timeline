@@ -18,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -78,6 +79,10 @@ fun SchedulerScreen(
     val verticalScroll = rememberScrollState()
     val scope = rememberCoroutineScope()
 
+    // Ticks once a minute. Passed down so neither canvas reads the clock in its draw
+    // lambda, where it was only sampled when something else invalidated the draw.
+    val now by rememberNow()
+
     // The launch position needs the viewport width, which only exists after the first
     // layout pass, so it cannot be set in the state's constructor.
     LaunchedEffect(state.viewportWidthPx, pxPerMinute) {
@@ -110,6 +115,7 @@ fun SchedulerScreen(
                 TimelineHeader(
                     state = state,
                     axis = axis,
+                    now = now,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxSize()
@@ -132,6 +138,7 @@ fun SchedulerScreen(
                 TimelineContent(
                     state = state,
                     axis = axis,
+                    now = now,
                     modifier = Modifier
                         .weight(1f)
                         // The timeline area's width, with the label column excluded: this

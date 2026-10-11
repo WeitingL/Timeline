@@ -31,6 +31,7 @@ import kotlin.math.ceil
 fun TimelineHeader(
     state: SchedulerState,
     axis: TimeAxis,
+    now: LocalDateTime,
     modifier: Modifier = Modifier,
 ) {
     val scale = state.config.scale
@@ -89,7 +90,7 @@ fun TimelineHeader(
             strokeWidth = 1.dp.toPx(),
         )
 
-        drawNowMarker(axis, viewportStart, nowColor)
+        drawNowMarker(axis, viewportStart, now, nowColor)
     }
 }
 
@@ -109,9 +110,10 @@ private fun DrawScope.drawTickLabel(
 private fun DrawScope.drawNowMarker(
     axis: TimeAxis,
     viewportStartMinutes: Double,
+    now: LocalDateTime,
     color: Color,
 ) {
-    val x = axis.xOf(LocalDateTime.now(), viewportStartMinutes)
+    val x = axis.xOf(now, viewportStartMinutes)
     if (x < 0f || x > size.width) return
     drawLine(
         color = color,

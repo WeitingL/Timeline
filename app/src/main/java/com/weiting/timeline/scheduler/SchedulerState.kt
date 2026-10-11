@@ -351,7 +351,10 @@ class SchedulerState(
 
 @Composable
 fun rememberSchedulerState(
-    tasks: List<Task> = sampleTasks(),
+    // A lambda, not a list: a default argument is evaluated on every call, so a plain
+    // `sampleTasks()` built six Tasks and a list on every recomposition for `remember` to
+    // discard. Invoked inside `remember`, it runs once.
+    tasks: () -> List<Task> = ::sampleTasks,
     config: TimelineConfig = TimelineConfig(),
     /**
      * Origin = this week's Monday at midnight.
@@ -367,4 +370,4 @@ fun rememberSchedulerState(
     origin: LocalDateTime = LocalDate.now()
         .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         .atStartOfDay(),
-): SchedulerState = remember { SchedulerState(origin, tasks, config) }
+): SchedulerState = remember { SchedulerState(origin, tasks(), config) }

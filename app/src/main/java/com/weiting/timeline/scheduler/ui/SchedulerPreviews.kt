@@ -181,7 +181,7 @@ private fun previewState(
     drag: DragMode? = null,
 ): SchedulerState {
     val state = rememberSchedulerState(
-        tasks = sampleTasks(),
+        tasks = ::sampleTasks,
         config = TimelineConfig(scale = scale, zoom = zoom),
     )
     remember(state, drag) {

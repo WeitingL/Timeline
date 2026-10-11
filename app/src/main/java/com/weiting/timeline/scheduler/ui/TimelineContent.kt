@@ -93,13 +93,16 @@ private val BarShape = RoundedCornerShape(6.dp)
 /**
  * The scrollable task area: grid lines behind, one lane per task in front.
  *
- * The grid reads the viewport in the draw phase, so a scroll gesture never recomposes
- * this subtree.
+ * The grid reads the viewport in the draw phase and bar positions read it in the layout
+ * phase, so a scroll gesture recomposes nothing here. [now] is passed in rather than read
+ * from the clock in the draw lambda, which is what used to freeze the marker between
+ * redraws.
  */
 @Composable
 fun TimelineContent(
     state: SchedulerState,
     axis: TimeAxis,
+    now: LocalDateTime,
     modifier: Modifier = Modifier,
 ) {
     val scale = state.config.scale
@@ -123,7 +126,7 @@ fun TimelineContent(
                     strokeWidth = if (tick.isMajor) 1.5.dp.toPx() else 1.dp.toPx(),
                 )
             }
-            drawNowLine(axis, viewportStart, nowColor)
+            drawNowLine(axis, viewportStart, now, nowColor)
         },
     ) {
         state.tasks.forEachIndexed { index, task ->
@@ -163,14 +166,10 @@ private fun TaskLane(
     val pxPerMinute = axis.pxPerMinute
     val showGrips = barWidth >= MinGripWidth
     val edgeThresholdPx = with(density) { EdgeAutoScrollThreshold.toPx() }
-    // The pointer position arrives relative to the bar; auto-scroll needs it relative to
-    // the timeline area, and the bar's own left edge is exactly that offset. It moves with
-    // the bar, so it has to be read fresh each frame rather than captured at composition.
     val metrics = rememberUpdatedState(
         LaneMetrics(
             barWidthPx = barWidthPx,
             handlePx = handlePx,
-            laneOriginX = axis.xOf(start, state.viewportStartMinutes),
             pxPerMinute = pxPerMinute,
             edgeThresholdPx = edgeThresholdPx,
         ),
@@ -280,10 +279,22 @@ private fun TaskLane(
                                 if (!change.pressed) break
                                 val m = metrics.value
                                 state.dragBy(deltaX, m.pxPerMinute)
-                                // Edge auto-scroll: with panning locked, this is the only
-                                // way to move a bar out of the current window.
+                                // The pointer arrives relative to the bar; auto-scroll
+                                // needs it relative to the timeline area, and the bar's
+                                // own left edge is that offset. Computed here rather than
+                                // in the composable body: an argument expression there
+                                // reads viewportStartMinutes during composition, which
+                                // invalidated every lane on every scroll frame. A snapshot
+                                // read inside a pointerInput block is in no observation
+                                // scope, so it subscribes nothing — and it is the more
+                                // correct value, being this event's viewport rather than
+                                // the last composition's.
+                                val laneOriginX = axis.xOf(
+                                    state.draft?.start ?: task.start,
+                                    state.viewportStartMinutes,
+                                )
                                 state.autoScrollStep(
-                                    fingerX = change.position.x + m.laneOriginX,
+                                    fingerX = change.position.x + laneOriginX,
                                     thresholdPx = m.edgeThresholdPx,
                                     maxPxPerStep = AutoScrollMaxPxPerFrame,
                                     pxPerMinute = m.pxPerMinute,
@@ -350,7 +361,6 @@ private fun TaskLane(
 private data class LaneMetrics(
     val barWidthPx: Float,
     val handlePx: Float,
-    val laneOriginX: Float,
     val pxPerMinute: Float,
     val edgeThresholdPx: Float,
 )
@@ -466,9 +476,10 @@ private fun rememberDraftFor(state: SchedulerState, taskId: String) =
 private fun DrawScope.drawNowLine(
     axis: TimeAxis,
     viewportStartMinutes: Double,
+    now: LocalDateTime,
     color: Color,
 ) {
-    val x = axis.xOf(LocalDateTime.now(), viewportStartMinutes)
+    val x = axis.xOf(now, viewportStartMinutes)
     if (x < 0f || x > size.width) return
     drawLine(
         color = color.copy(alpha = 0.7f),
