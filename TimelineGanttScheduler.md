@@ -1,57 +1,3 @@
-Take-Home Quiz — Timeline / Gantt Scheduler
-Overview
-Build a horizontally scrollable timeline scheduler (think of the scheduling view in project-management tools). The timeline shows a set of task bars laid out against a time axis. Users can scroll through time, drag task bars around, resize them, and have them snap to a time grid.
-Implement this using Jetpack Compose.
-You may not use a third-party charting/Gantt library for the core view. The point is to see how you build custom, interactive UI in Compose from the ground up — working with layout, drawing, and gesture handling yourself. Standard Compose / AndroidX APIs are fine.
-
-Time Expectation:
-Please spend no more than 5 hours on this assignment. We encourage you to use AI tools throughout the process, as this reflects how we work at PicCollage.
-If you don’t finish everything within the time limit, that’s completely fine—please list the remaining items, and we’ll discuss your approach and priorities during the review session.
-
-The Task
-A "task" has, at minimum: an id, a title, a start time, and a duration (or end time). Render tasks as horizontal bars positioned along a time axis. Multiple tasks are stacked in separate rows.
-Required
-Time axis header with readable tick labels (e.g. hours or days) that stays aligned with the content as the user scrolls horizontally.
-Horizontal scrolling across the timeline, with the header and the content area scrolling in sync.
-Task bars rendered in rows, correctly positioned and sized according to each task's start time and duration.
-Drag to move a task bar along the time axis, updating its start time.
-Resize a task bar by dragging its left/right edge, updating its start time or duration.
-Snapping: when moving or resizing, task bars snap to a configurable time grid (e.g. every 15 minutes / every hour).
-The following must be configurable (a parameter, state, or setter is fine — your choice):
-time scale / unit of the axis
-zoom level (how much horizontal space one time unit occupies)
-snap interval
-row height
-A small amount of sample data so the screen is populated when we run it.
-Free to explore
-Anything not specified above is intentionally left open. Where the spec is silent — styling, colors, exact interaction feel, data model details, state management, architecture, how you structure the configurable parameters — use your own judgement. We're interested in the choices you make and why.
-You are also welcome to add extra features beyond this list if you think they strengthen the submission. If you do, mention them in your writeup so we don't miss them.
-
-Deliverables
-A runnable Android project with the Compose implementation. A single screen that shows the scheduler is enough.
-You can push it to github or provide us a link of the git bundle or zip file of the project folder, but please be sure to include the git history of your work.
-A short README / writeup (see below).
-Please keep the project self-contained and buildable with a standard, recent Android Studio / Gradle setup. Note any special steps needed to run it.
-
-AI Usage Writeup (important)
-Please use AI tools however you normally would. We are not trying to catch you using AI — we want to see how well you use it. In your writeup, please cover:
-Which AI tools you used and how you broke the problem down and prompted them.
-What the AI got wrong or produced poorly, how you noticed (e.g. profiling, testing a specific interaction, reading the generated code), and how you fixed it.
-Your assessment of the final solution: what you think is good, what is a compromise, and what you would improve with more time.
-Where the AI struggled most in this task (e.g. gesture handling, layout, scroll sync, performance) and why you think that is.
-Where you overrode the AI or chose to write something yourself, and your reasoning.
-Being able to produce working code is the baseline. What we really want to see is how you evaluate, critique, and steer what the AI gives you.
-Please write directly in this document
-
-Practicalities
-Suggested time budget: a few focused hours. This is not meant to consume your whole weekend — if you run out of time, prioritize the required items and explain your trade-offs in the writeup.
-If anything is ambiguous, make a reasonable assumption or reach out to us.
-Good luck, and have fun with it.
-
-
-
----
-
 # AI Usage Writeup
 
 ## 1. Setting up the AI workflow
@@ -464,7 +410,11 @@ a day, plus the audit and fixes on 10-11.
   recorded in spec 003): it is invisible to CI and can only be caught by review or audit. It
   has already happened once.
 - **Edits don't survive Activity recreation.** Rotate and you're back to the sample data.
-  `rememberSaveable` would fix it; I scoped it out, and it's the gap I'd close first.
+  `rememberSaveable` with a custom `Saver` would fix it, and I scoped it out. It is
+  **deliberately absent from the list above**: in a project running sample data, scroll
+  performance and interaction feel are what someone meets on every gesture, while rotation
+  is occasional. For a real product with real data the priority would invert and this would
+  come first.
 - **Lanes are a `Column`, not a `LazyColumn`**, and every bar is composed regardless of
   horizontal visibility. Fine for six tasks, wrong for six hundred.
 - **The tick list is rebuilt every frame, twice** (header and grid). Estimated as small, and
@@ -475,24 +425,27 @@ a day, plus the audit and fixes on 10-11.
 
 ### What I'd do with more time
 
-1. Open Layout Inspector, close spec 003's unverified criterion, and take spec 004's baseline
-   while I'm there.
-2. Persistence across Activity recreation, then across process death.
-3. Instrumented tests for gesture arbitration and Compose phase behaviour — the most
-   expensive class of bug here, structurally invisible to unit tests, and the one I chose to
-   leave unguarded.
-4. Verify `fingerX` during edge auto-scroll when a bar is clipped outside the viewport.
-5. `LazyColumn` plus horizontal culling, before the task list grows.
+1. **Optimise scroll performance and close the remaining bugs.** This covers three things
+   already written down but not done: open Layout Inspector and clear spec 003's unverified
+   criterion that lanes no longer recompose during a scroll (the same session also yields
+   spec 004's baseline for free); the four render-path items parked in spec 004 — the tick
+   list rebuilt every frame in both canvases, labels re-measured, `Duration` allocated on
+   the hot path; and verifying `fingerX` during edge auto-scroll when a bar is clipped
+   outside the viewport, where the arithmetic is right by construction but the path was
+   never exercised.
 
-### The honest summary
+2. **Add animation.** Only two things animate today: navigation (the prev/today/next
+   controls and the two-finger swipe move the viewport smoothly) and the discovery pulse on
+   a bar's grips. Everything else is an instant jump — a bar snaps to the grid by teleporting
+   onto it, changing scale replaces the whole view at once, zoom lands in one step. Those are
+   the places a user touches on every interaction, and none of them has a transition. Snapping
+   is the one I'd do first: letting a bar settle onto the grid line with a short spring reads
+   as "it snapped" rather than "it jumped somewhere".
 
-The agent was fastest at the parts I could verify cheaply and slowest at the parts I
-couldn't.
-
-The value came from three things. **Not letting it move without a written spec, a diagram,
-and a run on a real device.** **Not planning in one pass — build a piece, run it, let the
-device decide the next piece.** And **doing the post-coding review with four independent
-instruments rather than by reading the diff** — because every expensive bug here compiled,
-passed, and read sensibly. Of its ten mistakes, not one was found by reading the code: three
-by my finger on a screen, one by a failing test, one by a compile check, two by its own
-validation scripts, and three by checking the documentation against the code.
+3. **Let the user reorder tasks by dragging vertically.** This was deliberately cut, not
+   overlooked — spec 001's question 4 and spec 002 both ruled it out, on the grounds that
+   rows carry no independent meaning so reordering would encode nothing. But that reason has
+   a shelf life: as soon as a row stands for a person, a resource, or just the user's own
+   priority, the order becomes data. The gesture slot is already free — a vertical drag on a
+   bar currently falls through to the lane scroller, which is exactly the axis reordering
+   would claim.
